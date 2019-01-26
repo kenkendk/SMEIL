@@ -1,0 +1,20 @@
+proc plusone(in inbus, const val)
+    exposed bus plusout {
+       val: i32;
+    };
+    var cur: int = 10;
+{
+    cur = cur - 1;
+    plusout.val = cur;
+    trace("Sent val {}", inbus.val);
+}
+
+network plusone_net() {
+    exposed bus idout {
+        valid: bool;
+        val: i32;
+    };
+
+    instance plusone_inst of
+        plusone(idout, 0);
+}
