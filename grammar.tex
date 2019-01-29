@@ -34,7 +34,7 @@
 
   <network> ::= `network' <ident> `(' [ <params> ] `)' \\`{' \{ <network-decl> \} `}'
 
-  <process> ::= [ `sync' | `async' ] `proc' <ident> \\ `(' [
+  <process> ::= [ `clocked' ] `proc' <ident> \\ `(' [
              <params> ] `)' \{ <process-decl> \}\\ `{' \{ <statement> \} `}'
 
   <network-decl> ::= <inst-decl>
@@ -68,11 +68,9 @@
   
   <const-decl> ::= `const' <ident> `:' <type-name> `=' <expression> `;'
 
-  <bus-decl> ::= [ `exposed' ] `bus' <ident> \\ `\{' <bus-signal-decls> `\}'  `;'
+  <bus-decl> ::= [ `clocked' ] `bus' <ident> \\ `\{' <bus-signal-decls> `\}'  `;'
 
   <func-decl> ::= `function' <ident> `(' <params> `)' `{' \{ <statement> \}  `}' `;'
-
-% <bus-decl> ::= [ `exposed' ] [ `unique' ] `bus' <ident> \\ `\{' <bus-signal-decls> `\}'  `;'
 
   <bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
 
@@ -223,11 +221,13 @@
   \begin{itemize}
   \item as
   \item async
+  \item await
   \item barrier
   \item break
   \item bus
   \item case
   \item const
+  \item clocked
   \item default
   \item elif
   \item else
@@ -252,6 +252,7 @@
   \item to
   \item unique
   \item var
+  \item wait
   \item where
   \end{itemize}
 \end{multicols}
