@@ -61,7 +61,7 @@
   \alt `out' (output signal)
   \alt `const' (constant input value)  
 
-   <var-decl> ::= `var' <ident> `:' \\ <type-name> [ `=' <expression> ] [ <range> ] `;'
+  <var-decl> ::= `var' <ident> `:' \\ <type-name> [ `=' <expression> ] [ <range> ] `;'
 
   <range> ::= `range' <expression> `to' <expression>
 
@@ -164,10 +164,10 @@
   \alt `f32' (single-precision floating point)
   \alt `f64' (double-precision floating point)
   \alt `bool' (boolean value)
-  \alt `[' [ <expression> ] `]' <type-name> (array of type)
-
+  
   <type-name> ::= <intrinsic-type>
-  \alt <ident> (type definition)
+  \alt <name> (type definition)
+  \alt `[' [ <expression> ] `]' <type-name> (array of type)
 
   <ident> ::= <letter> \{ <letter> | <number> | `_' | `-' \} (identifier)
 
