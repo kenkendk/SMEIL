@@ -17,7 +17,7 @@
 
 \section*{Grammar}
 \begin{grammar}
-  <module> ::= \{ <import-stm> \} <entity> \\ \{ <entity> \}
+  <module> ::= \{ <import-stm> \} \{ <type-def> \} \\ <entity> \{ <entity> \}
 
   <import-stm> ::= `import' <import-name> [ <qualified-specifier> ] `;'
   \alt `from' <import-name> \\ `import' <ident> \{ `,' <ident> \} [ <qualified-specifier> ]
@@ -26,6 +26,8 @@
   <import-name> ::= <ident> \{ `.' <ident> \}
 
   <qualified-specifier> ::= `as' <ident>
+
+  <type-def> ::= `type' <ident> `:' <type> `;'
 
   <entity> ::= <network>
   \alt <process>
@@ -154,7 +156,7 @@
 
   <string-literal> ::= `"'\{ <string-char> \}`"'
 
-  <type> ::= `i' <integer> (signed integer)
+  <intrinsic-type> ::= `i' <integer> (signed integer)
   \alt `int' (arbitrary-width signed integer)
   \alt `u' <integer> (unsigned integer)
   \alt `uint' (arbitrary-width unsigned integer)
@@ -162,6 +164,9 @@
   \alt `f64' (double-precision floating point)
   \alt `bool' (boolean value)
   \alt `[' [ <expression> ] `]' <type> (array of type)
+
+  <type> ::= <intrinsic-type>
+  \alt <ident> (type definition)
 
   <ident> ::= <letter> \{ <letter> | <number> | `_' | `-' \} (identifier)
 
