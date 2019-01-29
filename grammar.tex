@@ -44,7 +44,7 @@
   \alt <const-decl>
   \alt <bus-decl>
   \alt <enum-decl>
-  %\alt <function>
+  \alt <func-decl>
   \alt <inst-decl>
   \alt <gen-decl>
   
@@ -68,6 +68,8 @@
 
   <bus-decl> ::= [ `exposed' ] `bus' <ident> \\ `\{' <bus-signal-decls> `\}'  `;'
 
+  <func-decl> ::= `function' <ident> `(' <params> `)' `{' \{ <statement> \}  `}' `;'
+
 % <bus-decl> ::= [ `exposed' ] [ `unique' ] `bus' <ident> \\ `\{' <bus-signal-decls> `\}'  `;'
 
 <bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
@@ -86,12 +88,13 @@
   <gen-decl> ::= `generate' <ident> `=' <expression> `to' <expression> \\ `{' \{ <network-decl> \} `}'
 
   <statement> ::= <name> `=' <expression> `;' (assignment)
+  \alt <ident> `(' <param-map> `)'`;' (function call) 
   \alt `if' `(' <expression> `)' `{' \{ <statement> \} `}' \\ \{ <elif-block>
     \} [ <else-block> ]
   \alt `for' <ident> `=' <expression> `to' <expression> \\ `{' \{ <statement> \} `}'
   %\alt `while' <expression> `{' \{ <statement> \} `}'
   \alt `switch' <expression> \\ `{' <switch-case> \{ <switch-case> \} [ `default' `{' <statement> \{ <statement> \} `}' ] `}'
-  \alt `trace' `(' <format-string> \{ `,' <expression> \} )`;'
+  \alt `trace' `(' <format-string> \{ `,' <expression> \} `)'`;'
   \alt `assert' `(' <expression> [ `,' <string-literal> ] `)'`;'
   %\alt `barrier' `;'
   \alt `break' `;'
