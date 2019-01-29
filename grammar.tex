@@ -17,7 +17,7 @@
 
 \section*{Grammar}
 \begin{grammar}
-  <module> ::= \{ <import-stm> \} \{ <type-def> \} \\ <entity> \{ <entity> \}
+  <module> ::= \{ <import-stm> \} \\ \{ <type-def> \} \\ <entity> \{ <entity> \}
 
   <import-stm> ::= `import' <import-name> [ <qualified-specifier> ] `;'
   \alt `from' <import-name> \\ `import' <ident> \{ `,' <ident> \} [ <qualified-specifier> ]
@@ -27,7 +27,10 @@
 
   <qualified-specifier> ::= `as' <ident>
 
-  <type-def> ::= `type' <ident> `:' <type-name> `;'
+  <type-def> ::= `type' <ident> `:' \\
+    <type-name> (type alias) \\
+    | <bus-signal-decls> (bus definition)\\
+    `;' 
 
   <entity> ::= <network>
   \alt <process>
