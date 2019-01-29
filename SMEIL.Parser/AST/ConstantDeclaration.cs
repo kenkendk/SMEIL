@@ -16,7 +16,7 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// The constant type
         /// </summary>
-        public DataType DataType;
+        public TypeName DataType;
         /// <summary>
         /// The constant value
         /// </summary>
@@ -29,7 +29,7 @@ namespace SMEIL.Parser.AST
         /// <param name="name">The name of the constant</param>
         /// <param name="dataType">The type of the constant</param>
         /// <param name="expression">The value of the constant element</param>
-        public ConstantDeclaration(ParseToken token, Identifier name, DataType dataType, Expression expression)
+        public ConstantDeclaration(ParseToken token, Identifier name, TypeName dataType, Expression expression)
             : base(token)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));

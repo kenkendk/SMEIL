@@ -13,7 +13,7 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// The variable data type
         /// </summary>
-        public readonly DataType Type;
+        public readonly TypeName Type;
         /// <summary>
         /// The expression initializer
         /// </summary>
@@ -30,7 +30,7 @@ namespace SMEIL.Parser.AST
         /// <param name="name">The name of the variable.</param>
         /// <param name="type">The data type.</param>
         /// <param name="initializer">The initializer expression</param>
-        public VariableDeclaration(ParseToken token, Identifier name, DataType type, Expression initializer, Range range)
+        public VariableDeclaration(ParseToken token, Identifier name, TypeName type, Expression initializer, Range range)
             : base(token)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));

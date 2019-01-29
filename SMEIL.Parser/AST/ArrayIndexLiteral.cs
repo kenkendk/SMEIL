@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace SMEIL.Parser.AST
 {
     /// <summary>
     /// Represents an array index literal
     /// </summary>
+    [DebuggerDisplay("[ {Index} ]")]
     public class ArrayIndexLiteral : Constant
     {
         /// <summary>

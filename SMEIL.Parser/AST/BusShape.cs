@@ -7,69 +7,34 @@ namespace SMEIL.Parser.AST
     /// <summary>
     /// Represents the inferred shape of a bus
     /// </summary>
-    public class BusShape
+    public class BusShape : ParsedItem
     {
         /// <summary>
         /// The list of signals the bus must have for it to be compatible
         /// </summary>
-        public readonly IDictionary<string, DataType> Signals;
+        public readonly IDictionary<string, TypeName> Signals;
 
         /// <summary>
         /// Builds a shape for a given identifier within the process
         /// </summary>
+        /// <param name="source">The source token</param>
         /// <param name="signals">The signals in the bus</param>
-        public BusShape(IDictionary<string, DataType> signals = null)
+        public BusShape(ParseToken source, IEnumerable<AST.BusSignalDeclaration> signals)
+            : base(source)
         {
-            Signals = new Dictionary<string, DataType>(signals ?? new Dictionary<string, DataType>());
+            Signals = signals.ToDictionary(x => x.Name.Name, x => x.Type);
         }
 
         /// <summary>
-        /// Creates a new shape for the given bus
+        /// Builds a shape for a given identifier within the process
         /// </summary>
-        /// <param name="bus">The declaration to build the shape from</param>
-        public BusShape(AST.BusDeclaration bus)
+        /// <param name="source">The source token</param>
+        /// <param name="contents">The signals in the bus</param>
+        public BusShape(ParseToken source, IDictionary<string, TypeName> contents)
+            : base(source)
         {
-            Signals = bus.Signals.ToDictionary(
-                x => x.Name.Name,
-                x => x.Type
-            );
+            Signals = new Dictionary<string, TypeName>(contents);
         }
-
-        // /// <summary>
-        // /// Analyses a process and returns the bus names and shapes
-        // /// </summary>
-        // /// <param name="process">The process to analyse</param>
-        // /// <returns>A list of identifiers and their required shapes</returns>
-        // public static Tuple<Parameter, BusShape>[] FindShapes(Process process)
-        // {
-        //     // Make a lookup table for the bus name
-        //     var lookup = process            
-        //         .Parameters
-        //         .Zip(
-        //             Enumerable.Range(0, process.Parameters.Length), 
-        //             (a,b) => new { Index = b, Item = a, Shape = new BusShape() }
-        //         )
-        //         .ToDictionary(x => x.Item.Name.Name);
-
-        //     foreach(var s in process.Statements.All())
-        //     {
-        //         if (s.Current is Name name && name.Identifier.Length == 2)
-        //         {
-        //             if (lookup.TryGetValue(name.Identifier.First().Name, out var el))
-        //             {
-        //                 // TODO: Figure out the signal type
-        //                 xxx
-        //                 el.Shape.Signals[name.Identifier.Last().Name] = null;
-        //             }
-        //         }
-        //     }
-
-        //     return lookup
-        //         .Values
-        //         .OrderBy(x => x.Index)
-        //         .Select(x => new Tuple<Parameter, BusShape>(x.Item, x.Shape))
-        //         .ToArray();
-        // }
 
         /// <summary>
         /// Returns a value indicating if <paramref name="a"/> can be assigned to <paramref name="b"/>
@@ -81,10 +46,15 @@ namespace SMEIL.Parser.AST
         public static bool CanAssignTo(BusShape a, BusShape b, bool throwOnError = false)
         {
             foreach (var signal in b.Signals)
-                if (!a.Signals.TryGetValue(signal.Key, out var t) || t != signal.Value)
+                if (!a.Signals.TryGetValue(signal.Key, out var t) || !object.Equals(t, signal.Value))
                 {
                     if (throwOnError)
-                        throw new Exception($"Incompatible bus shapes, missing signal {signal.Key} of type {signal.Value}");
+                    {
+                        if (t == null)
+                            throw new Exception($"Incompatible bus shapes, missing signal {signal.Key} of type {signal.Value}");
+                        else
+                            throw new Exception($"Incompatible bus shapes, signal {signal.Key} has type {t} bus should be type {signal.Value}");
+                    }
 
                     return false;
                 }

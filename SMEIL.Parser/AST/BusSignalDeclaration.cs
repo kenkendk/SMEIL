@@ -15,7 +15,7 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// The signal data type
         /// </summary>
-        public readonly DataType Type;
+        public readonly TypeName Type;
         /// <summary>
         /// The initializer expression, if any
         /// </summary>
@@ -33,7 +33,7 @@ namespace SMEIL.Parser.AST
         /// <param name="type">The signal type</param>
         /// <param name="initializer">The optional initializer</param>
         /// <param name="range">The optional range</param>
-        public BusSignalDeclaration(ParseToken source, Identifier name, DataType type, Expression initializer, Range range)
+        public BusSignalDeclaration(ParseToken source, Identifier name, TypeName type, Expression initializer, Range range)
             : base(source)
         {
             Name = name;

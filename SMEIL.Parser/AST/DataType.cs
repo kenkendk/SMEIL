@@ -53,11 +53,6 @@ namespace SMEIL.Parser.AST
         public readonly BusShape Shape;
 
         /// <summary>
-        /// The index expression, if any
-        /// </summary>
-        public readonly Expression Indexer;
-
-        /// <summary>
         /// Initializes a new instance of the <see cref="T:SMEIL.Parser.AST.DataType"/> class.
         /// </summary>
         /// <param name="token">The source token.</param>
@@ -88,13 +83,11 @@ namespace SMEIL.Parser.AST
         /// </summary>
         /// <param name="token">The source token.</param>
         /// <param name="parent">The array data type.</param>
-        /// <param name="indexer">The index expression.</param>
-        public DataType(ParseToken token, DataType parent, Expression indexer)
+        public DataType(ParseToken token, DataType parent)
             : base(token)
         {
             Type = parent.Type;
             BitWidth = parent.BitWidth;
-            Indexer = indexer ?? throw new ArgumentNullException(nameof(indexer));
         }
 
         /// <summary>
@@ -151,95 +144,6 @@ namespace SMEIL.Parser.AST
         }
 
         /// <summary>
-        /// Checks if two data types can be compared for equality
-        /// </summary>
-        /// <param name="a">One data type</param>
-        /// <param name="b">Another data type</param>
-        /// <returns><c>true</c> if the types can be compared for equality; <c>false</c> otherwise</returns>
-        public static bool CanEqualityCompare(DataType a, DataType b)
-        {
-            return CanUnifyTypes(a, b);
-        }
-
-        /// <summary>
-        /// Checks if two data types can be unified
-        /// </summary>
-        /// <param name="a">One data type</param>
-        /// <param name="b">Another data type</param>
-        /// <returns><c>true</c> if the types can be unified; <c>false</c> otherwise</returns>
-        public static bool CanUnifyTypes(DataType a, DataType b)
-        {
-            return TryGetUnifiedType(a, b) != null;
-        }
-
-        /// <summary>
-        /// Combines two data types into the largest unified type, or throws an exception
-        /// </summary>
-        /// <param name="a">One data type</param>
-        /// <param name="b">Another data type</param>
-        /// <returns>The unified data type</returns>
-        private static DataType TryGetUnifiedType(DataType a, DataType b)
-        {
-            if (a == null)
-                throw new ArgumentNullException(nameof(a));
-            if (b == null)
-                throw new ArgumentNullException(nameof(b));
-
-            switch (a.Type)
-            {
-                case ILType.SignedInteger:
-                    if (b.Type == ILType.SignedInteger)
-                        return new DataType(a.SourceToken, ILType.SignedInteger, Math.Max(a.BitWidth, b.BitWidth));
-                    else if (b.Type == ILType.UnsignedInteger)
-                        return new DataType(a.SourceToken, ILType.SignedInteger, Math.Max(a.BitWidth, b.BitWidth) + (a.BitWidth <= b.BitWidth && a.BitWidth != -1 ? 1 : 0));
-                    break;
-
-                case ILType.UnsignedInteger:
-                    if (b.Type == ILType.UnsignedInteger)
-                        return new DataType(a.SourceToken, ILType.UnsignedInteger, Math.Max(a.BitWidth, b.BitWidth));
-                    else if (b.Type == ILType.SignedInteger)
-                        return new DataType(a.SourceToken, ILType.UnsignedInteger, Math.Max(a.BitWidth, b.BitWidth) + (a.BitWidth >= b.BitWidth && a.BitWidth != -1 ? 1 : 0));
-                    break;
-
-
-                case ILType.Float:
-                    if (b.Type == ILType.Float)
-                        return new DataType(a.SourceToken, ILType.Float, Math.Max(a.BitWidth, b.BitWidth));
-                    break;
-
-                case ILType.Bool:
-                    if (b.Type == ILType.Bool)
-                        return a;
-                    break;
-
-                case ILType.Bus:
-                    // Build a unified type for the shapes
-                    var shape = new BusShape(a.Shape.Signals);
-
-                    foreach (var n in b.Shape.Signals)
-                        if (!shape.Signals.TryGetValue(n.Key, out var t))
-                            shape.Signals.Add(n.Key, n.Value);
-                        else if (!object.Equals(t, n.Value))
-                            shape.Signals[n.Key] = UnifiedType(n.Value, t);
-
-                    return new DataType(a.SourceToken, shape);
-            }
-
-            return null;
-        }
-
-        /// <summary>
-        /// Combines two data types into the largest unified type, or throws an exception
-        /// </summary>
-        /// <param name="a">One data type</param>
-        /// <param name="b">Another data type</param>
-        /// <returns>The unified data type</returns>
-        public static DataType UnifiedType(DataType a, DataType b)
-        {
-            return TryGetUnifiedType(a, b) ?? throw new Exception($"Unable to unify types {a} and {b}");
-        }
-
-        /// <summary>
         /// Checks if the two instances are the same data type
         /// </summary>
         /// <param name="other">The type to compare with</param>
@@ -285,34 +189,6 @@ namespace SMEIL.Parser.AST
                 return this.Type.GetHashCode() ^ this.Shape.Signals.Count ^ (this.Shape.Signals.Count == 0 ? 0 : this.Shape.Signals.Select(x => x.GetHashCode()).Aggregate((a,b) => a ^ b));
             else
                 return this.Type.GetHashCode() ^ this.BitWidth;
-        }
-
-        /// <summary>
-        /// Checks if a type can be type-casted to another type
-        /// </summary>
-        /// <param name="sourceType">The source type</param>
-        /// <param name="targetType">The type being casted to</param>
-        /// <returns><c>true</c> if the <paramref name="sourceType" /> can be cast to <paramref name="targetType" />; false otherwise</returns>
-        public static bool CanTypeCast(DataType sourceType, DataType targetType)
-        {
-            if (object.Equals(sourceType, targetType) || CanUnifyTypes(sourceType, targetType))
-                return true;
-
-            // We do not allow casting to/from booleans
-            if (sourceType.IsBoolean || targetType.IsBoolean && sourceType.IsBoolean != targetType.IsBoolean)
-                return false;
-
-            // No casting to/from a bus type
-            if (sourceType.IsBus || targetType.IsBus)
-                return false;
-
-            // Numeric casting is allowed, even with precision loss
-            if (sourceType.IsNumeric && targetType.IsNumeric)
-                return true;
-
-            // No idea what the user has attempted :)
-            return false;
-
         }
 
         /// <inheritdoc />

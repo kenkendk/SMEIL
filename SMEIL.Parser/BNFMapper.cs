@@ -86,6 +86,7 @@ namespace SMEIL.Parser
                 Composite("[", integer, "]"),
                 x => new AST.ArrayIndexLiteral(x.Item, x.FirstMapper(integer))
             );
+            
             var specialLiteral = Mapper(Literal("U"), x => new AST.SpecialLiteral(x.Item));
 
             var simpletypename = Mapper(
@@ -112,23 +113,6 @@ namespace SMEIL.Parser
                 ),
 
                 x => x.FirstDerivedMapper<AST.Constant>()
-            );
-
-            var nameitem = Composite(
-                ident,
-                Optional(
-                    Composite("[", arrayIndexLiteral, "]")
-                )
-            );
-
-            var name = Mapper(
-                Composite(
-                    nameitem,
-                    Sequence(Composite(".", nameitem))
-                ),
-
-                // TODO: This is wrong ....
-                x => new AST.Name(x.Item, x.InvokeMappers(ident).ToArray(), null)
             );
 
             var binaryOperation = Mapper(
@@ -193,6 +177,52 @@ namespace SMEIL.Parser
                 null,
                 x => x.FirstDerivedMapper<AST.Expression>()
             );
+
+            var arrayIndex = Mapper(
+                Composite(
+                    "[",
+                    expression,
+                    "]"
+                ),
+
+                x => new AST.ArrayIndex(x.Item, x.FirstMapper(expression))
+            );
+
+            var nameitem = Mapper(
+                Composite(
+                    ident,
+                    Optional(
+                        arrayIndex
+                    )
+                ),
+
+                x => new
+                {
+                    Name = x.FirstMapper(ident),
+                    Index = x.FirstOrDefaultMapper(arrayIndex)
+                }
+            );
+
+            var name = Mapper(
+                Composite(
+                    nameitem,
+                    Sequence(
+                        Composite(
+                            ".",
+                            nameitem
+                        )
+                    )
+                ),
+
+                x => {
+                    var entries = x.InvokeMappers(nameitem);
+                    return new AST.Name(
+                        x.Item,
+                        entries.Select(y => y.Name).ToArray(),
+                        entries.Select(y => y.Index).ToArray()
+                    );
+                }
+            );            
 
             var binaryExpression = Mapper(
                 Composite(expression, binaryOperation, expression), 
@@ -411,14 +441,20 @@ namespace SMEIL.Parser
 
 
             var typename = Mapper(
-                Choice(
-                    simpletypename,
-                    Composite("[", expression, "]", simpletypename)
+                Composite(
+                    Optional(
+                        Composite("[", expression, "]")
+                    ),
+                    Choice(
+                        simpletypename, 
+                        name
+                    )
                 ),
 
-                x => x.SubMatches[0].Token is BNF.Composite
-                    ? new AST.DataType(x.Item, x.FirstMapper(simpletypename), x.FirstMapper(expression))
-                    : x.FirstMapper(simpletypename)
+                x => 
+                    x.SubMatches[0].SubMatches[1].SubMatches[0].Token == simpletypename
+                        ? new AST.TypeName(new AST.DataType(x.Item, x.FirstMapper(simpletypename)), x.FirstOrDefaultMapper(expression))
+                        : new AST.TypeName(x.FirstMapper(name), x.FirstOrDefaultMapper(expression))
             );
 
             var range = Mapper(
@@ -488,14 +524,21 @@ namespace SMEIL.Parser
                 Composite(
                     Optional(Composite("[", int32literal, "]")),
                     direction,
-                    ident
+                    ident,
+                    Optional(
+                        Composite(
+                            ":",
+                            typename
+                        )
+                    )
                 ),
 
                 x => new AST.Parameter(
                     x.Item,
                     x.FirstMapper(direction),
                     x.FirstMapper(ident),
-                    x.FirstOrDefaultMapper(int32literal)
+                    x.FirstOrDefaultMapper(int32literal),
+                    x.FirstOrDefaultMapper(typename)
                 )
             );
 
@@ -657,6 +700,26 @@ namespace SMEIL.Parser
                             .FirstMapper(ident)
                     );
                 }
+            );
+
+            var typedefs = Mapper(
+                Composite(
+                    "type",
+                    ident,
+                    ":",
+                    Choice(
+                        typename,
+                        Composite(
+                            busSignalDeclaration,
+                            Sequence(busSignalDeclaration)
+                        )
+                    )
+                ),
+
+                x => 
+                    x.SubMatches[0].Token == typename
+                        ? new AST.TypeDefinition(x.Item, x.FirstMapper(ident), x.FirstMapper(typename))
+                        : new AST.TypeDefinition(x.Item, x.FirstMapper(ident), x.InvokeMappers(busSignalDeclaration))
             );
 
             var parammap = Mapper(
@@ -838,6 +901,9 @@ namespace SMEIL.Parser
                     Sequence(
                         importstatement
                     ),
+                    Sequence(
+                        typedefs
+                    ),
                     entity,
                     Sequence(entity)
                 ),
@@ -845,6 +911,7 @@ namespace SMEIL.Parser
                 x => new AST.Module(
                     x.Item,
                     x.InvokeMappers(importstatement).ToArray(),
+                    x.InvokeMappers(typedefs).ToArray(),
                     x.InvokeMappers(entity).ToArray()
                 )
             );

@@ -16,8 +16,8 @@ namespace SMEIL.Parser.Validation
             // We use the instances to define new scopes for names
             foreach (var instanceDecl in state.Modules.Values.All().OfType<AST.InstanceDeclaration>())
             {
-                var symbolTable = state.FindSymbolTable(instanceDecl);
-                symbolTable.TryGetValue(instanceDecl.Current.Name.Name.Name, out var instanceobj);
+                var scope = state.FindScopeForItem(instanceDecl);
+                scope.SymbolTable.TryGetValue(instanceDecl.Current.Name.Name.Name, out var instanceobj);
                 if (instanceobj == null)
                     throw new ArgumentException($"Failed to find element with name {instanceDecl.Current.Name.Name.Name}");
 
@@ -43,8 +43,8 @@ namespace SMEIL.Parser.Validation
                     }
                     else if (item.Current is AST.NameExpression name)
                     {
-                        var symbol = state.FindSymbol(name.Name, symbolTable);
-                        var dt = FindDataType(state, symbolTable, name);
+                        var symbol = state.FindSymbol(name.Name, scope);
+                        var dt = FindDataType(state, name, scope);
                         if (dt != null)
                         {
                             instance.AssignedTypes[name] = dt;
@@ -118,16 +118,16 @@ namespace SMEIL.Parser.Validation
                         // If we are doing a compare operation, verify that the types can be compared
                         if (binaryExpression.Operation.IsEqualityOperation)
                         {
-                            if (!AST.DataType.CanEqualityCompare(leftType, rightType))
+                            if (!state.CanEqualityCompare(leftType, rightType, scope))
                                 throw new ParserException($"Cannot perform boolean operation {binaryExpression.Operation.Operation} on types {leftType} and {rightType}", binaryExpression);
                         }
 
                         // Make sure we can unify the types
-                        if (!AST.DataType.CanUnifyTypes(leftType, rightType))
+                        if (!state.CanUnifyTypes(leftType, rightType, scope))
                             throw new ParserException($"The types types {leftType} and {rightType} cannot be unified for use with the operation {binaryExpression.Operation.Operation}", binaryExpression);
 
                         // Compute the unified type
-                        var unified = AST.DataType.UnifiedType(leftType, rightType);
+                        var unified = state.UnifiedType(leftType, rightType, scope);
 
                         // If the source operands do not have the unified types, inject an implicit type-cast
                         if (!object.Equals(leftType, unified))
@@ -173,7 +173,7 @@ namespace SMEIL.Parser.Validation
 
                         var sourceType = instance.AssignedTypes[typecastExpression.Expression];
 
-                        if (!AST.DataType.CanTypeCast(sourceType, typecastExpression.TargetType))
+                        if (!state.CanTypeCast(sourceType, typecastExpression.TargetType, scope))
                             throw new ParserException($"Cannot cast from {sourceType} to {typecastExpression.TargetType}", typecastExpression);
 
                         instance.AssignedTypes[typecastExpression] = typecastExpression.TargetType;
@@ -185,20 +185,20 @@ namespace SMEIL.Parser.Validation
                 {
                     if (item.Current is AST.AssignmentStatement assignmentStatement)
                     {
-                        var symbol = state.FindSymbol(assignmentStatement.Name, symbolTable);
+                        var symbol = state.FindSymbol(assignmentStatement.Name, scope);
                         var exprType = instance.AssignedTypes[assignmentStatement.Value];
                         DataType targetType;
 
                         if (symbol is Instance.Variable variableInstance)
-                            targetType = variableInstance.Source.Type;
+                            targetType = state.ResolveTypeName(variableInstance.Source.Type, scope);
                         else if (symbol is Instance.Signal signalInstance)
-                            targetType = signalInstance.Source.Type;
+                            targetType = state.ResolveTypeName(signalInstance.Source.Type, scope);
                         else
                             throw new ParserException($"Assignment must be to a variable or a signal", item.Current);
 
-                        if (!AST.DataType.CanUnifyTypes(targetType, exprType))
+                        if (!state.CanUnifyTypes(targetType, exprType, scope))
                             throw new ParserException($"Cannot assign {exprType} to {assignmentStatement.Name} with type {targetType}", item.Current);
-                        var unified = AST.DataType.UnifiedType(targetType, exprType);
+                        var unified = state.UnifiedType(targetType, exprType, scope);
                         if (!object.Equals(unified, targetType))
                             throw new ParserException($"Cannot assign {exprType} to {assignmentStatement.Name} with type {targetType}", item.Current);
 
@@ -215,23 +215,27 @@ namespace SMEIL.Parser.Validation
         /// Performs a lookup to find the symbol and returns the datatype of the found symbol
         /// </summary>
         /// <param name="state">The current state</param>
-        /// <param name="symbolTable">The symbol table to use</param>
+        /// <param name="scope">The scope to use</param>
         /// <param name="name">The name to find</param>
         /// <returns>The datatype or <c>null</c></returns>
-        private static DataType FindDataType(Validation.ValidationState state, IDictionary<string, object> symbolTable, AST.NameExpression name)
+        private static DataType FindDataType(Validation.ValidationState state, AST.NameExpression name, ScopeState scope)
         {
-            var symb = state.ResolveSymbol(name, symbolTable);
+            var symb = state.ResolveSymbol(name, scope);
             if (symb == null)
                 throw new ParserException($"Unable to find instance for name: {name.Name}", name);
 
             if (symb is Instance.Variable variable)
-                return variable.Source.Type;
+                return variable.ResolvedType = state.ResolveTypeName(variable.Source.Type, scope);
             else if (symb is Instance.Bus bus)
-                return new DataType(bus.Source.SourceToken, bus.Shape);
+            {
+                var shape = state.ResolveSignalsToIntrinsic(bus.Shape.Signals, scope);
+                bus.ResolvedSignalTypes = shape.ToDictionary(x => x.Key, x => x.Value.IntrinsicType);
+                return new DataType(bus.Source.SourceToken, new BusShape(name.SourceToken, shape));
+            }
             else if (symb is Instance.Signal signal)
-                return signal.Source.Type;
+                return signal.ResolvedType = state.ResolveTypeName(signal.Source.Type, scope);
             else if (symb is Instance.ConstantReference constant)
-                return constant.Source.DataType;
+                return constant.ResolvedType = state.ResolveTypeName(constant.Source.DataType, scope);
             else if (symb is Instance.Literal literalInstance)
             {
                 if (literalInstance.Source is AST.BooleanConstant)

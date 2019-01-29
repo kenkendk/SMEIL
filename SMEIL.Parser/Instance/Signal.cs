@@ -23,7 +23,12 @@ namespace SMEIL.Parser.Instance
         /// The parent bus instance
         /// </summary>
         public readonly Instance.Bus ParentBus;
-        
+
+        /// <summary>
+        /// The resolved type of the variable
+        /// </summary>
+        public AST.DataType ResolvedType { get; set; }
+
         /// <summary>
         /// Constructs a new signal instance
         /// </summary>

@@ -20,6 +20,11 @@ namespace SMEIL.Parser.Instance
         public readonly AST.ConstantDeclaration Source;
 
         /// <summary>
+        /// The resolved type of the variable
+        /// </summary>
+        public AST.DataType ResolvedType { get; set; }
+
+        /// <summary>
         /// Creates a new variable instnace
         /// </summary>
         /// <param name="source">The source item</param>

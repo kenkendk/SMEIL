@@ -28,14 +28,19 @@ namespace SMEIL.Parser.Validation
         /// <summary>
         /// Local scopes created by the validator and parser
         /// </summary>
-        public readonly Dictionary<object, IDictionary<string, object>> LocalScopes = new Dictionary<object, IDictionary<string, object>>();
+        public readonly Dictionary<object, ScopeState> LocalScopes = new Dictionary<object, ScopeState>();
+
+        /// <summary>
+        /// The root scope
+        /// </summary>
+        private readonly ScopeState m_rootscope;
 
         /// <summary>
         /// Walks the parents of the item and gets the closest type scope
         /// </summary>
         /// <param name="item">The item to get the type scope for</param>
         /// <returns>The type scope</returns>
-        public IDictionary<string, object> FindSymbolTable<T>(TypedVisitedItem<T> item)
+        public ScopeState FindScopeForItem<T>(TypedVisitedItem<T> item)
             where T : AST.ParsedItem
         {
             foreach (var n in new [] { item.Current }.Concat(item.Parents))
@@ -58,12 +63,12 @@ namespace SMEIL.Parser.Validation
         /// <summary>
         /// The table of current symbols
         /// </summary>
-        public IDictionary<string, object> SymbolTable => SymbolScopes.Peek();
+        public ScopeState CurrentScope => SymbolScopes.Peek();
 
         /// <summary>
         /// The stack with symbol scopes
         /// </summary>
-        private Stack<ChainedDictionary<string, object>> SymbolScopes = new Stack<ChainedDictionary<string, object>>();
+        private Stack<ScopeState> SymbolScopes = new Stack<ScopeState>();
 
         /// <summary>
         /// The top-level network module
@@ -95,7 +100,7 @@ namespace SMEIL.Parser.Validation
         /// </summary>
         public ValidationState()
         {
-            SymbolScopes.Push(new ChainedDictionary<string, object>(null));
+            m_rootscope = new ScopeState(SymbolScopes);
         }
 
         /// <summary>
@@ -176,11 +181,11 @@ namespace SMEIL.Parser.Validation
         /// Resolves an expression to an integer constant, or throws an exception if this is not possible
         /// </summary>
         /// <param name="expression">The expression to resolve</param>
-        /// <param name="symboltable">The optional symbol table</param>
+        /// <param name="scope">The scope to use</param>
         /// <returns>An integer</returns>
-        public int ResolveToInteger(Expression expression, Dictionary<string, object> symboltable = null)
+        public int ResolveToInteger(Expression expression, ScopeState scope)
         {
-            return ResolveToInteger(expression, ResolveSymbol(expression, symboltable));
+            return ResolveToInteger(expression, ResolveSymbol(expression, scope), scope);
         }
 
         /// <summary>
@@ -188,12 +193,17 @@ namespace SMEIL.Parser.Validation
         /// </summary>
         /// <param name="source">The source line, used to give indicative error messags</param>
         /// <param name="instance">The instance to reduce</param>
+        /// <param name="scope">The scope to use</param>
         /// <returns>An integer</returns>
-        public int ResolveToInteger(ParsedItem source, IInstance instance)
+        public int ResolveToInteger(ParsedItem source, IInstance instance, ScopeState scope)
         {
             if (instance is Instance.ConstantReference constDecl)
             {
-                if (!constDecl.Source.DataType.IsInteger)
+                var dt = ResolveTypeName(constDecl.Source.DataType, scope);
+                if (dt == null)
+                    throw new ParserException($"Failed to resolve data type: {constDecl.Source.DataType}", source);
+
+                if (!dt.IsInteger)
                     throw new ParserException($"Cannot use item of type {constDecl.Source.DataType} as an integer is required", source);
                 return ((AST.IntegerConstant)((AST.LiteralExpression)constDecl.Source.Expression).Value).ToInt32;
             }
@@ -212,13 +222,13 @@ namespace SMEIL.Parser.Validation
         /// Resolves a symbol to be a variable or a bus
         /// </summary>
         /// <param name="expression">The expression to resolve</param>
-        /// <param name="symboltable">The symbol table to resolve with</param>
+        /// <param name="scope">The scope to use</param>
         /// <returns>The resolved item or <c>null<c/></returns>
-        public Instance.IInstance ResolveSymbol(Expression expression, IDictionary<string, object> symboltable = null)
+        public Instance.IInstance ResolveSymbol(Expression expression, ScopeState scope)
         {
             if (expression is NameExpression name)
             {
-                var symbol = FindSymbol(name.Name, symboltable);
+                var symbol = FindSymbol(name.Name, scope);
                 if (symbol is Instance.IInstance || symbol == null)
                     return (Instance.IInstance)symbol;
 
@@ -230,169 +240,53 @@ namespace SMEIL.Parser.Validation
                 throw new ParserException($"Composite expressions not yet supported for binding parameters", expression);
         }
 
-        // /// <summary>
-        // /// Re-enters a scope using an instance
-        // /// </summary>
-        // /// <param name="item">The item used to register the scope
-        // /// <returns>A disposable that </returns>
-        // public IDisposable EnterScope(object item)
-        // {
-        //     return new ReScopeDisposer(this, LocalScopes[item] as ChainedDictionary<string, object>);
-        // }
-
         /// <summary>
         /// Starts a new scope using this as the base scope
         /// </summary>
         /// <param name="items">The items to register for the scope
         /// <returns>A disposable that will unset the current scope</returns>
-        public IDisposable StartScope(params object[] items)
+        public ScopeState StartScope(params object[] items)
         {
-            var sc = new SubScopeDisposer(SymbolScopes);
+            var sc = new ScopeState(SymbolScopes);
             if (items != null)
                 foreach (var item in items.Where(x => x != null))
-                    LocalScopes[item] = SymbolTable;
+                    LocalScopes[item] = sc;
             return sc;
-        }
-
-        /// <summary>
-        /// Starts a new scope using this as the base scope
-        /// </summary>
-        /// <returns>A disposable that will unset the current scope</returns>
-        public IDisposable StartScope(object item = null) {
-            var sc = new SubScopeDisposer(SymbolScopes);
-            if (item != null)
-                LocalScopes[item] = SymbolTable;
-            return sc;
-        }
-
-        // /// <summary>
-        // /// Internal class for reattaching a chained symbol scope
-        // /// </summary>
-        // private class ReScopeDisposer : IDisposable
-        // {
-        //     /// <summary>
-        //     /// The previous stack
-        //     /// </summary>
-        //     private readonly Stack<ChainedDictionary<string, object>> m_previous;
-        //     /// <summary>
-        //     /// The validation state parent
-        //     /// </summary>
-        //     private readonly ValidationState m_parent;
-        //     /// <summary>
-        //     /// The scope just created
-        //     /// </summary>
-        //     private readonly ChainedDictionary<string, object> m_item;
-        //     /// <summary>
-        //     /// Flag keeping track of the dispose state
-        //     /// </summary>
-        //     private bool m_isDisposed = false;
-
-        //     /// <summary>
-        //     /// Creates a new disposable scope
-        //     /// </summary>
-        //     /// <param name="parent">The scope stack</param>
-        //     public ReScopeDisposer(ValidationState parent, ChainedDictionary<string, object> self)
-        //     {
-        //         m_parent = parent ?? throw new ArgumentNullException(nameof(parent));
-        //         m_previous = m_parent.SymbolScopes;
-        //         parent.SymbolScopes = new Stack<ChainedDictionary<string, object>>((self ?? throw new ArgumentNullException(nameof(self))).GetList());
-        //     }
-
-        //     /// <summary>
-        //     /// Disposes the current scope
-        //     /// </summary>
-        //     public void Dispose()
-        //     {
-        //         if (!m_isDisposed)
-        //         {
-        //             m_parent.SymbolScopes = m_previous;
-        //             m_isDisposed = true;
-        //         }
-        //     }            
-        // }
-
-
-        /// <summary>
-        /// Internal class for starting a new chained symbol scope
-        /// </summary>
-        private class SubScopeDisposer : IDisposable
-        {
-            /// <summary>
-            /// The stack of scopes
-            /// </summary>
-            private readonly Stack<ChainedDictionary<string, object>> m_parent;
-            /// <summary>
-            /// The scope just created
-            /// </summary>
-            private readonly ChainedDictionary<string, object> m_item;
-            /// <summary>
-            /// Flag keeping track of the dispose state
-            /// </summary>
-            private bool m_isDisposed = false;
-
-            /// <summary>
-            /// Creates a new disposable scope
-            /// </summary>
-            /// <param name="parent">The scope stack</param>
-            public SubScopeDisposer(Stack<ChainedDictionary<string, object>> parent)
-            {
-                m_parent = parent ?? throw new ArgumentNullException(nameof(parent));
-                m_item = new ChainedDictionary<string, object>(m_parent.Peek());
-                m_parent.Push(m_item);
-            }
-
-            /// <summary>
-            /// Disposes the current scope
-            /// </summary>
-            public void Dispose()
-            {
-                if (!m_isDisposed)
-                {
-                    m_isDisposed = true;
-                    if (m_parent.Peek() != m_item)
-                        throw new Exception("Unexpected scope disposal");
-                    m_parent.Pop();
-                }
-            }
         }
 
         /// <summary>
         /// Finds the item with the given name
         /// </summary>
         /// <param name="name">The name to look for</param>
-        /// <param name="symboltable">The table to use, defaults to the current</param>
+        /// <param name="scope">The scope to use</param>
         /// <returns>The item matching the name, or null</returns>
-        public object FindSymbol(AST.Identifier name, IDictionary<string, object> symboltable = null)
+        public object FindSymbol(AST.Identifier name, ScopeState scope)
         {
-            return FindSymbol(new AST.Name(name.SourceToken, new [] { name ?? throw new ArgumentNullException(nameof(name)) }, null), symboltable);
+            return FindSymbol(new AST.Name(name.SourceToken, new [] { name ?? throw new ArgumentNullException(nameof(name)) }, null), scope);
         }
 
         /// <summary>
         /// Finds the item with the given name
         /// </summary>
         /// <param name="name">The name to look for</param>
-        /// <param name="symboltable">The table to use, defaults to the current</param>
+        /// <param name="scope">The scope to use</param>
         /// <returns>The item matching the name, or null</returns>
-        public object FindSymbol(AST.Name name, IDictionary<string, object> symboltable = null)
+        public object FindSymbol(AST.Name name, ScopeState scope)
         {
-            if (symboltable == null)
-                LocalScopes.TryGetValue(name, out symboltable);
-
             // Keep a list of matches to give better error messages
             var matched = new List<string>();
 
-            symboltable = symboltable ?? SymbolTable;
             object res = null;
             foreach (var id in name.Identifier)
             {
                 res = null;
                 // Check that we are either in the first access where we find all symbols,
                 // or that the symbol is in the local table
-                if (matched.Count == 0 || (((ChainedDictionary<string, object>)symboltable).SelfContainsKey(id.Name)))
+                if (matched.Count == 0 || scope.SelfContainsSymbol(id.Name))
                 {
                     // This should only fail for the very first item, as the others will fail the check above
                     // and go to the exception message below
-                    if (!symboltable.TryGetValue(id.Name, out res))
+                    if (!scope.SymbolTable.TryGetValue(id.Name, out res))
                         throw new ParserException($"Failed to locate \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", name);
 
                     if (res == null)
@@ -406,11 +300,85 @@ namespace SMEIL.Parser.Validation
                 matched.Add(id.Name);
 
                 // We do not need a symbol table for the last item, but all others need a local symbol table
-                if (matched.Count != name.Identifier.Length && !LocalScopes.TryGetValue(res, out symboltable))
+                if (matched.Count != name.Identifier.Length && !LocalScopes.TryGetValue(res, out scope))
                     throw new ParserException($"No symbol table for \"{id.Name}\" in item {string.Join(".", matched)}", name);
             }
 
             return res;
+        }
+
+        /// <summary>
+        /// Finds the item with the given name
+        /// </summary>
+        /// <param name="name">The name to look for</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns>The item matching the name, or null</returns>
+        public object FindTypeDefinition(AST.Name name, ScopeState scope)
+        {
+            // Keep a list of matches to give better error messages
+            var matched = new List<string>();
+
+            object res = null;
+            foreach (var id in name.Identifier)
+            {
+                res = null;
+                // Check that we are either in the first access where we find all symbols,
+                // or that the symbol is in the local table
+                if (matched.Count == 0 || scope.SelfContainsTypeDef(id.Name))
+                {
+                    // This should only fail for the very first item, as the others will fail the check above
+                    // and go to the exception message below
+                    if (!scope.TypedefinitionTable.TryGetValue(id.Name, out res))
+                        throw new ParserException($"Failed to locate \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", name);
+
+                    if (res == null)
+                        throw new ParserException($"Null value in symbol table for \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", name);
+                }
+                else
+                {
+                    throw new ParserException($"No such item \"{id.Name}\" in item {string.Join(".", matched)}", name);
+                }
+
+                matched.Add(id.Name);
+
+                // We do not need a symbol table for the last item, but all others need a local symbol table
+                if (matched.Count != name.Identifier.Length && !LocalScopes.TryGetValue(res, out scope))
+                    throw new ParserException($"No symbol table for \"{id.Name}\" in item {string.Join(".", matched)}", name);
+            }
+
+            return res;
+        }        
+
+        /// <summary>
+        /// Resolves a data type in the given scope
+        /// </summary>
+        /// <param name="name">The name to resolve</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns></returns>
+        public DataType ResolveTypeName(AST.TypeName name, ScopeState scope)
+        {
+            var visited = new HashSet<AST.Name>();
+            var orig = name;
+
+            while(true)
+            {
+                if (name.IntrinsicType != null)
+                    return name.IntrinsicType;
+
+                if (visited.Contains(name.Alias))
+                    throw new ParserException($"Circular typedefinition detected", orig);
+                visited.Add(name.Alias);
+
+                var rs = FindTypeDefinition(name.Alias, scope);
+                if (rs == null)
+                    throw new ParserException($"Failed to find type named: {name.Alias}", name);
+                if (rs is AST.TypeName nt)                
+                    name = nt;
+                else if (rs is AST.DataType dt)
+                    return dt;
+                else
+                    throw new ParserException($"Resolved {name.Alias} to {rs}, expected a type", name);
+            }
         }
 
         /// <summary>
@@ -434,50 +402,48 @@ namespace SMEIL.Parser.Validation
         /// Registers all symbols for the given module in the given scope
         /// </summary>
         /// <param name="module">The module to find names in</param>
-        /// <param name="symboltable">The table to use, defaults to the current</param>
-        public void RegisterSymbols(AST.Declaration decl, IDictionary<string, object> symboltable = null)
+        /// <param name="scope">The scope to use</param>
+        public void RegisterSymbols(AST.Declaration decl, ScopeState scope)
         {
             if (decl == null)
                 throw new ArgumentNullException(nameof(decl));
 
-            if (symboltable == null)
-                LocalScopes.TryGetValue(decl, out symboltable);
-
-            symboltable = symboltable ?? SymbolTable;
-
             if (decl is EnumDeclaration enumDecl)
             {
-                symboltable.Add(enumDecl.Name.Name, decl);
+                scope.SymbolTable.Add(enumDecl.Name.Name, decl);
+
                 if (!LocalScopes.TryGetValue(decl, out var subscope))
-                    LocalScopes[decl] = subscope = new ChainedDictionary<string, object>(symboltable);
+                    using(subscope = StartScope(decl))
+                    { /* Dispose immediately */}
 
                 foreach (var e in enumDecl.Fields)
-                    subscope.Add(e.Name.Name, e);
+                    subscope.SymbolTable.Add(e.Name.Name, e);
             }
             else if (decl is FunctionDeclaration func)
             {
-                symboltable.Add(func.Name.Name, decl);
+                scope.SymbolTable.Add(func.Name.Name, decl);
             }
             else if (decl is BusDeclaration bus)
             {
-                symboltable.Add(bus.Name.Name, decl);
+                scope.SymbolTable.Add(bus.Name.Name, decl);
                 if (!LocalScopes.TryGetValue(decl, out var subscope))
-                    LocalScopes[decl] = subscope = new ChainedDictionary<string, object>(symboltable);
+                    using (subscope = StartScope(decl))
+                    { /* Dispose immediately */}
 
                 foreach (var signal in bus.Signals)
-                    subscope.Add(signal.Name.Name, signal);
+                    subscope.SymbolTable.Add(signal.Name.Name, signal);
             }
             else if (decl is VariableDeclaration variable)
             {
-                symboltable.Add(variable.Name.Name, decl);
+                scope.SymbolTable.Add(variable.Name.Name, decl);
             }
             else if (decl is ConstantDeclaration constant)
             {
-                symboltable.Add(constant.Name.Name, decl);
+                scope.SymbolTable.Add(constant.Name.Name, decl);
             }
             else if (decl is InstanceDeclaration inst)
             {
-                symboltable.Add(inst.Name.Name.Name, decl);
+                scope.SymbolTable.Add(inst.Name.Name.Name, decl);
             }
             else
             {
@@ -489,32 +455,163 @@ namespace SMEIL.Parser.Validation
         /// Registers all symbols for the given module in the given scope
         /// </summary>
         /// <param name="module">The module to find names in</param>
-        /// <param name="symboltable">The table to use, defaults to the current</param>
-        public void RegisterSymbols(AST.Module module, IDictionary<string, object> symboltable = null)
+        /// <param name="scope">The scope to use</param>
+        public void RegisterSymbols(AST.Module module, ScopeState scope)
         {
-            if (symboltable == null)
-                LocalScopes.TryGetValue(module, out symboltable);
-
-            symboltable = symboltable ?? SymbolTable;
-
             foreach (var ent in module.Entities)
             {
                 if (ent is AST.Process process)
                 {
-                    symboltable.Add(process.Name.Name, ent);
+                    scope.SymbolTable.Add(process.Name.Name, ent);
 
                     foreach (var decl in process.Declarations)
-                        RegisterSymbols(decl, symboltable);
+                        RegisterSymbols(decl, scope);
                 }
                 else if (ent is AST.Network network)
                 {
-                    symboltable.Add(network.Name.Name, ent);
+                    scope.SymbolTable.Add(network.Name.Name, ent);
                     foreach (var decl in network.Declarations)
-                        RegisterSymbols(decl, symboltable);
+                        RegisterSymbols(decl, scope);
                 }
                 else 
-                    throw new Exception($"Unexpected ");
+                    throw new Exception($"Unexpected entity: {ent}");
             }
+
+            foreach (var tdef in module.TypeDefinitions)
+                scope.SymbolTable.Add(tdef.Name.Name, tdef);
         }
+
+        /// <summary>
+        /// Checks if two data types can be compared for equality
+        /// </summary>
+        /// <param name="a">One data type</param>
+        /// <param name="b">Another data type</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns><c>true</c> if the types can be compared for equality; <c>false</c> otherwise</returns>
+        public bool CanEqualityCompare(DataType a, DataType b, ScopeState scope)
+        {
+            return CanUnifyTypes(a, b, scope);
+        }
+
+        /// <summary>
+        /// Checks if two data types can be unified
+        /// </summary>
+        /// <param name="a">One data type</param>
+        /// <param name="b">Another data type</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns><c>true</c> if the types can be unified; <c>false</c> otherwise</returns>
+        public bool CanUnifyTypes(DataType a, DataType b, ScopeState scope)
+        {
+            return TryGetUnifiedType(a, b, scope) != null;
+        }
+
+        /// <summary>
+        /// Combines two data types into the largest unified type, or throws an exception
+        /// </summary>
+        /// <param name="a">One data type</param>
+        /// <param name="b">Another data type</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns>The unified data type</returns>
+        private DataType TryGetUnifiedType(DataType a, DataType b, ScopeState scope)
+        {
+            if (a == null)
+                throw new ArgumentNullException(nameof(a));
+            if (b == null)
+                throw new ArgumentNullException(nameof(b));
+
+            switch (a.Type)
+            {
+                case ILType.SignedInteger:
+                    if (b.Type == ILType.SignedInteger)
+                        return new DataType(a.SourceToken, ILType.SignedInteger, Math.Max(a.BitWidth, b.BitWidth));
+                    else if (b.Type == ILType.UnsignedInteger)
+                        return new DataType(a.SourceToken, ILType.SignedInteger, Math.Max(a.BitWidth, b.BitWidth) + (a.BitWidth <= b.BitWidth && a.BitWidth != -1 ? 1 : 0));
+                    break;
+
+                case ILType.UnsignedInteger:
+                    if (b.Type == ILType.UnsignedInteger)
+                        return new DataType(a.SourceToken, ILType.UnsignedInteger, Math.Max(a.BitWidth, b.BitWidth));
+                    else if (b.Type == ILType.SignedInteger)
+                        return new DataType(a.SourceToken, ILType.UnsignedInteger, Math.Max(a.BitWidth, b.BitWidth) + (a.BitWidth >= b.BitWidth && a.BitWidth != -1 ? 1 : 0));
+                    break;
+
+
+                case ILType.Float:
+                    if (b.Type == ILType.Float)
+                        return new DataType(a.SourceToken, ILType.Float, Math.Max(a.BitWidth, b.BitWidth));
+                    break;
+
+                case ILType.Bool:
+                    if (b.Type == ILType.Bool)
+                        return a;
+                    break;
+
+                case ILType.Bus:
+                    var a_signals = ResolveSignalsToIntrinsic(a.Shape.Signals, scope);
+                    var b_signals = ResolveSignalsToIntrinsic(b.Shape.Signals, scope);
+
+                    // Build a unified type for the shapes
+                    var shape = new BusShape(a.Shape.SourceToken, a_signals);
+
+                    foreach (var n in b_signals)
+                        if (!shape.Signals.TryGetValue(n.Key, out var t))
+                            shape.Signals.Add(n.Key, n.Value);
+                        else if (!object.Equals(t, n.Value))
+                            shape.Signals[n.Key] = new AST.TypeName(UnifiedType(n.Value.IntrinsicType, t.IntrinsicType, scope), null);
+
+                    return new DataType(a.SourceToken, shape);
+            }
+
+            return null;
+        }
+
+        public IDictionary<string, TypeName> ResolveSignalsToIntrinsic(IDictionary<string, TypeName> signals, ScopeState scope)
+        {
+            return signals
+                .Select(x => new KeyValuePair<string, DataType>(x.Key, ResolveTypeName(x.Value, scope)))
+                .ToDictionary(x => x.Key, x => new AST.TypeName(x.Value, null));
+
+        }
+
+        /// <summary>
+        /// Combines two data types into the largest unified type, or throws an exception
+        /// </summary>
+        /// <param name="a">One data type</param>
+        /// <param name="b">Another data type</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns>The unified data type</returns>
+        public DataType UnifiedType(DataType a, DataType b, ScopeState scope)
+        {
+            return TryGetUnifiedType(a, b, scope) ?? throw new Exception($"Unable to unify types {a} and {b}");
+        }
+
+        /// <summary>
+        /// Checks if a type can be type-casted to another type
+        /// </summary>
+        /// <param name="sourceType">The source type</param>
+        /// <param name="targetType">The type being casted to</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns><c>true</c> if the <paramref name="sourceType" /> can be cast to <paramref name="targetType" />; false otherwise</returns>
+        public bool CanTypeCast(DataType sourceType, DataType targetType, ScopeState scope)
+        {
+            if (object.Equals(sourceType, targetType) || CanUnifyTypes(sourceType, targetType, scope))
+                return true;
+
+            // We do not allow casting to/from booleans
+            if (sourceType.IsBoolean || targetType.IsBoolean && sourceType.IsBoolean != targetType.IsBoolean)
+                return false;
+
+            // No casting to/from a bus type
+            if (sourceType.IsBus || targetType.IsBus)
+                return false;
+
+            // Numeric casting is allowed, even with precision loss
+            if (sourceType.IsNumeric && targetType.IsNumeric)
+                return true;
+
+            // No idea what the user has attempted :)
+            return false;
+
+        }    
     }
 }

@@ -35,7 +35,7 @@ namespace SMEIL.Parser.Validation
                 var position = 0;
                 var anynamed = false;
                 var map = new Instance.MappedParameter[sourceinstance.SourceParameters.Length];
-                var symboltable = state.LocalScopes[sourceinstance];
+                var scope = state.LocalScopes[sourceinstance];
 
                 // Map for getting the parameter index of a name
                 var nameindexmap = sourceinstance
@@ -65,7 +65,7 @@ namespace SMEIL.Parser.Validation
                     if (map[pos] != null)
                         throw new ParserException($"Double argument for {sourceinstance.SourceParameters[pos].Name.Name} detected", sourceinstance.SourceItem);
 
-                    var value = state.ResolveSymbol(p.Expression, symboltable);
+                    var value = state.ResolveSymbol(p.Expression, scope);
                     if (value == null)
                         throw new ParserException("Unable to resolve expression", p.Expression);
 
@@ -73,7 +73,7 @@ namespace SMEIL.Parser.Validation
 
                     // Register the instance in the local symbol table to allow
                     // refering to the instance with the parameter name
-                    symboltable.Add(map[pos].LocalName, value);
+                    scope.SymbolTable.Add(map[pos].LocalName, value);
                     position++;
                 }
 

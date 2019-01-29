@@ -48,6 +48,7 @@ namespace SMEIL.Parser
         public static Validation.ValidationState LoadModuleAndImports(string file, string toplevel, string[] arguments)
         {
             var state = new Validation.ValidationState();
+            var rootscope = state.CurrentScope;
             var toResolve = new Stack<AST.Module>();
             state.EntryModule = LoadModule(file);
 
@@ -90,12 +91,12 @@ namespace SMEIL.Parser
                     .ToArray()
             );
             state.Modules[file] = state.EntryModule;
-            state.LocalScopes[state.EntryModule] = state.SymbolTable;
+            state.LocalScopes[state.EntryModule] = rootscope;
 
             // Recursively load and resolve imports
             LoadImports(file, state, state.EntryModule);
 
-            state.RegisterSymbols(state.EntryModule);
+            state.RegisterSymbols(state.EntryModule, rootscope);
 
             return state;
         }
@@ -130,13 +131,14 @@ namespace SMEIL.Parser
         /// <param name="module"></param>
         private static void LoadImports(string sourcepath, Validation.ValidationState state, AST.Module module)
         {
+            var scope = state.CurrentScope;
             foreach (var imp in module.Imports)
             {
                 var p = GetModulePath(sourcepath, imp.ModuleName);
                 if (!state.Modules.ContainsKey(p))
                 {
                     var m = LoadModule(p);
-                    using(state.StartScope(m))
+                    using(var sc = state.StartScope(m))
                     {
                         // Recursively load the modules
                         LoadImports(p, state, m);
@@ -145,7 +147,7 @@ namespace SMEIL.Parser
                         state.Modules.Add(p, m);
 
                         // Register symbols in this scope
-                        state.RegisterSymbols(m);
+                        state.RegisterSymbols(m, sc);
                     }
                 }
 
@@ -153,13 +155,13 @@ namespace SMEIL.Parser
                 if (imp.SourceNames == null)
                 {
                     // Import the entire module as 
-                    state.SymbolTable.Add(imp.LocalName.Name, state.Modules[p]);
+                    scope.SymbolTable.Add(imp.LocalName.Name, state.Modules[p]);
                 }
                 else
                 {
                     // Import only the requested names, but import them without the module name
                     foreach (var n in imp.SourceNames)
-                        state.SymbolTable[n.Name] = state.FindSymbol(n, state.LocalScopes[state.Modules[p]]);
+                        scope.SymbolTable[n.Name] = state.FindSymbol(n, state.LocalScopes[state.Modules[p]]);
                 }
             }
         }

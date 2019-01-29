@@ -348,8 +348,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                             Name = x.LocalName,
                             DataType =
                                 x.MappedItem is Instance.ConstantReference
-                                ? (x.MappedItem as Instance.ConstantReference).Source.DataType
-                                : (x.MappedItem as Instance.Variable).Source.Type
+                                ? (x.MappedItem as Instance.ConstantReference).ResolvedType
+                                : (x.MappedItem as Instance.Variable).ResolvedType
                         })
                         .Select(x => $"{SanitizeVHDLName(x.Name)}: {RenderNativeType(x.DataType)};")
                         .ToArray();
@@ -500,7 +500,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                                     .OfType<Instance.Variable>()
                                     .Select(x => {
                                         var resetvalue = DefaultValue(x);
-                                        var expr = TypeCast(resetvalue, x.Source.Type);
+                                        var expr = TypeCast(resetvalue, x.ResolvedType);
 
                                         return new AST.AssignmentStatement(
                                             pdef.SourceToken, 
@@ -593,11 +593,11 @@ namespace SMEIL.Parser.Codegen.VHDL
             if (decl.Initializer == null)
             {
                 // Get the default value for the type
-                if (decl.Type.IsBoolean)
+                if (variable.ResolvedType.IsBoolean)
                     return new AST.LiteralExpression(decl.SourceToken, new AST.BooleanConstant(decl.SourceToken, false));
-                if (decl.Type.IsInteger)
+                if (variable.ResolvedType.IsInteger)
                     return new AST.LiteralExpression(decl.SourceToken, new AST.IntegerConstant(decl.SourceToken, "0"));
-                if (decl.Type.IsFloat)
+                if (variable.ResolvedType.IsFloat)
                     return new AST.LiteralExpression(decl.SourceToken, new AST.FloatingConstant(decl.SourceToken, "0", "0"));
 
                 throw new ParserException("No initial value for variable", decl);
@@ -641,7 +641,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for declaring a variable</returns>
         public string RenderVariable(RenderState state, Instance.Variable variable)
         {
-            return $"variable {SanitizeVHDLName(variable.Name)}: {RenderNativeType(variable.Source.Type)};";
+            return $"variable {SanitizeVHDLName(variable.Name)}: {RenderNativeType(variable.ResolvedType)};";
         }
 
         /// <summary>
@@ -680,12 +680,12 @@ namespace SMEIL.Parser.Codegen.VHDL
                     if (d == Validation.ItemUsageDirection.Both)
                     {
                         return new[] { 
-                            $"{RenderSignalName(busname, x.Name, "in")}: in {RenderNativeType(x.Source.Type)};",
-                            $"{RenderSignalName(busname, x.Name, "out")}: out {RenderNativeType(x.Source.Type)};"
+                            $"{RenderSignalName(busname, x.Name, "in")}: in {RenderNativeType(x.ResolvedType)};",
+                            $"{RenderSignalName(busname, x.Name, "out")}: out {RenderNativeType(x.ResolvedType)};"
                         };
                     }
                     else
-                        return new[] { $"{RenderSignalName(busname, x.Name)}: {(usages[x] == Validation.ItemUsageDirection.Read ? "in" : "out")} {RenderNativeType(x.Source.Type)};" };
+                        return new[] { $"{RenderSignalName(busname, x.Name)}: {(usages[x] == Validation.ItemUsageDirection.Read ? "in" : "out")} {RenderNativeType(x.ResolvedType)};" };
                 });
 
             // Return the bus signal declaration with the signals

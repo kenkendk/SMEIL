@@ -16,7 +16,7 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// The optional array index
         /// </summary>
-        public readonly ArrayIndex Index;
+        public readonly ArrayIndex[] Index;
 
         /// <summary>
         /// Helper property to see the full name
@@ -27,9 +27,9 @@ namespace SMEIL.Parser.AST
         /// Constructs a new name
         /// </summary>
         /// <param name="source">The source token</param>
-        /// <param name="identifier"></param>
-        /// <param name="index"></param>
-        public Name(ParseToken source, Identifier[] identifier, ArrayIndex index)
+        /// <param name="identifier">The identifiers</param>
+        /// <param name="index">The array indices</param>
+        public Name(ParseToken source, Identifier[] identifier, ArrayIndex[] index)
             : base(source)
         {
             Identifier = identifier;

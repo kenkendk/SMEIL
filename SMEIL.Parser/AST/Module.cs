@@ -17,16 +17,23 @@ namespace SMEIL.Parser.AST
         public readonly Entity[] Entities;
 
         /// <summary>
+        /// The type definitions in the module
+        /// </summary>
+        public readonly TypeDefinition[] TypeDefinitions;
+
+        /// <summary>
         /// Initializes a new instance of the <see cref="T:SMEIL.Parser.AST.Module"/> class.
         /// </summary>
         /// <param name="token">The source token</param>
         /// <param name="imports">The imports in the module.</param>
+        /// <param name="typeDefinitions">The typedefinitions in the module.</param>
         /// <param name="entities">The entities in the module.</param>
-        public Module(ParseToken token, ImportStatement[] imports, Entity[] entities)
+        public Module(ParseToken token, ImportStatement[] imports, TypeDefinition[] typeDefinitions, Entity[] entities)
             : base(token)
         {
             Imports = imports;
             Entities = entities;
+            TypeDefinitions = typeDefinitions;
         }
     }
 }

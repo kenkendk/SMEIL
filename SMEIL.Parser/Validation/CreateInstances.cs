@@ -47,12 +47,13 @@ namespace SMEIL.Parser.Validation
         /// <param name="parentCollection"></param>
         private void CreateAndRegisterInstances(Validation.ValidationState state, IEnumerable<NetworkDeclaration> networkDecls, IList<Instance.IInstance> parentCollection)
         {
+            var scope = state.CurrentScope;
             foreach (var decl in networkDecls)
             {
                 if (decl is AST.BusDeclaration bus)
                 {
                     var b = new Instance.Bus(bus);
-                    state.SymbolTable.Add(b.Name, b);
+                    scope.SymbolTable.Add(b.Name, b);
                     using (state.StartScope(b))
                         CreateAndRegisterInstance(state, b);
                     parentCollection.Add(b);
@@ -61,8 +62,8 @@ namespace SMEIL.Parser.Validation
                     continue; // We just refer to the constant, no need for an instance
                 else if (decl is AST.GeneratorDeclaration genDecl)
                 {
-                    var startSymbol = state.ResolveToInteger(genDecl.SourceExpression);
-                    var finishSymbol = state.ResolveToInteger(genDecl.TargetExpression);
+                    var startSymbol = state.ResolveToInteger(genDecl.SourceExpression, scope);
+                    var finishSymbol = state.ResolveToInteger(genDecl.TargetExpression, scope);
 
                     // TODO: Need to fix array support for this to work correctly?
                     for(var i = startSymbol; i < finishSymbol; i++)
@@ -70,7 +71,7 @@ namespace SMEIL.Parser.Validation
                 }
                 else if (decl is AST.InstanceDeclaration instDecl)
                 {
-                    var sym = state.FindSymbol(instDecl.SourceItem);
+                    var sym = state.FindSymbol(instDecl.SourceItem, scope);
                     if (sym != null && sym is AST.Network netw)
                     {
                         // Recursively create network
@@ -81,7 +82,7 @@ namespace SMEIL.Parser.Validation
                     {
                         var p = new Instance.Process(instDecl, proc);
                         if (instDecl.Name.Name != null)
-                            state.SymbolTable.Add(instDecl.Name.Name.Name, p);
+                            scope.SymbolTable.Add(instDecl.Name.Name.Name, p);
 
                         using(state.StartScope(p, instDecl))
                             CreateAndRegisterInstance(state, p);
@@ -108,6 +109,8 @@ namespace SMEIL.Parser.Validation
         /// <param name="parent">The parent process</param>
         private void CreateAndRegisterInstance(Validation.ValidationState state, Instance.Process parent)
         {
+            var scope = state.CurrentScope;
+
             // Then add all variables and locally defined busses
             foreach (var decl in parent.ProcessDefinition.Declarations)
             {
@@ -120,13 +123,13 @@ namespace SMEIL.Parser.Validation
                 else if (decl is VariableDeclaration variable)
                 {
                     var v = new Instance.Variable(variable);
-                    state.SymbolTable.Add(v.Name, v);
+                    scope.SymbolTable.Add(v.Name, v);
                     parent.Instances.Add(v);
                 }
                 else if (decl is BusDeclaration bus)
                 {
                     var b = new Instance.Bus(bus);
-                    state.SymbolTable.Add(b.Name, b);
+                    scope.SymbolTable.Add(b.Name, b);
                     using(state.StartScope(b))
                         CreateAndRegisterInstance(state, b);
                     parent.Instances.Add(b);
@@ -140,9 +143,9 @@ namespace SMEIL.Parser.Validation
             foreach (var loop in parent.ProcessDefinition.Statements.All().OfType<AST.ForStatement>())
             {
                 var l = new Instance.ForLoop(loop.Current);
-                using (state.StartScope(l)) {
+                using (var sc = state.StartScope(l)) {
                     // TODO: Should use the variable instance?
-                    state.SymbolTable.Add(loop.Current.Variable.Name, l);
+                    sc.SymbolTable.Add(loop.Current.Variable.Name, l);
                 }
                 parent.Instances.Add(l);
             }
@@ -155,10 +158,12 @@ namespace SMEIL.Parser.Validation
         /// <param name="parent">The bus to create the signal instances for</param>
         private void CreateAndRegisterInstance(Validation.ValidationState state, Instance.Bus parent)
         {
+            var scope = state.CurrentScope;
+
             foreach (var signal in parent.Source.Signals)
             {
                 var s = new Instance.Signal(parent, signal);
-                state.SymbolTable.Add(s.Name, s);
+                scope.SymbolTable.Add(s.Name, s);
                 parent.Instances.Add(s);
 
             }
