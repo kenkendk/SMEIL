@@ -74,9 +74,9 @@
 
 % <bus-decl> ::= [ `exposed' ] [ `unique' ] `bus' <ident> \\ `\{' <bus-signal-decls> `\}'  `;'
 
-<bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
+  <bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
 
-<bus-signal-decl> ::= <ident> `:' <type> [ `=' <expression> ] [ <range> ] `;'
+  <bus-signal-decl> ::= <ident> `:' <type> [ `=' <expression> ] [ <range> ] `;'
 
   <inst-decl> ::= `instance' <instance-name> `of' <ident> \\`(' [ <param-map> 
   \{ `,' <param-map> \} ] `)' `;'
