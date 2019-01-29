@@ -27,7 +27,7 @@
 
   <qualified-specifier> ::= `as' <ident>
 
-  <type-def> ::= `type' <ident> `:' <type> `;'
+  <type-def> ::= `type' <ident> `:' <type-name> `;'
 
   <entity> ::= <network>
   \alt <process>
@@ -52,7 +52,7 @@
   
   <params> ::= <param> \{ , <param> \}
 
-  <param> ::= [ `[' [ <integer> ] `]' ] <direction> <ident> [ `:' <type> ]
+  <param> ::= [ `[' [ <integer> ] `]' ] <direction> <ident> [ `:' <type-name> ]
 
   <direction> ::= `in' (input signal)
   \alt `out' (output signal)
@@ -76,7 +76,7 @@
 
   <bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
 
-  <bus-signal-decl> ::= <ident> `:' <type> [ `=' <expression> ] [ <range> ] `;'
+  <bus-signal-decl> ::= <ident> `:' <type-name> [ `=' <expression> ] [ <range> ] `;'
 
   <inst-decl> ::= `instance' <instance-name> `of' <ident> \\`(' [ <param-map> 
   \{ `,' <param-map> \} ] `)' `;'
@@ -163,9 +163,9 @@
   \alt `f32' (single-precision floating point)
   \alt `f64' (double-precision floating point)
   \alt `bool' (boolean value)
-  \alt `[' [ <expression> ] `]' <type> (array of type)
+  \alt `[' [ <expression> ] `]' <type-name> (array of type)
 
-  <type> ::= <intrinsic-type>
+  <type-name> ::= <intrinsic-type>
   \alt <ident> (type definition)
 
   <ident> ::= <letter> \{ <letter> | <number> | `_' | `-' \} (identifier)
