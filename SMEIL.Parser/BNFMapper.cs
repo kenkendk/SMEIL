@@ -474,6 +474,36 @@ namespace SMEIL.Parser
                     : new AST.ArrayIndex(x.Item, x.FirstMapper(expression))
             );
 
+            var direction = Mapper(
+                Choice(
+                    "in",
+                    "out",
+                    "const"
+                ),
+                x => (AST.ParameterDirection)Enum.Parse(typeof(AST.ParameterDirection), x.Item.Text, true)
+            );
+
+            // Note: we restrict index to 32bit, but specs say unlimited
+            var parameter = Mapper(
+                Composite(
+                    Optional(Composite("[", int32literal, "]")),
+                    direction,
+                    ident
+                ),
+
+                x => new AST.Parameter(
+                    x.Item,
+                    x.FirstMapper(direction),
+                    x.FirstMapper(ident),
+                    x.FirstOrDefaultMapper(int32literal)
+                )
+            );
+
+            var parameters = Mapper(
+                Composite(parameter, Sequence(Composite(",", parameter))),
+                x => x.InvokeMappers(parameter).ToArray()
+            );
+
 
             var enumFieldDeclaration = Mapper(
                 Composite(
@@ -508,6 +538,28 @@ namespace SMEIL.Parser
                     x.Item, 
                     x.FirstMapper(ident),
                     x.InvokeMappers(enumFieldDeclaration).ToArray()
+                )
+            );
+
+            var funcDecl = Mapper(
+                Composite(
+                    "function",
+                    ident,
+                    "(",
+                    parameters,
+                    ")",
+                    "{",
+                    statement,
+                    Sequence(statement),                    
+                    "}",
+                    ";"
+                ),
+
+                x => new AST.FunctionDeclaration(
+                    x.Item,
+                    x.FirstMapper(ident),
+                    x.FirstMapper(parameters),
+                    x.InvokeMappers(statement).ToArray()
                 )
             );
 
@@ -605,36 +657,6 @@ namespace SMEIL.Parser
                             .FirstMapper(ident)
                     );
                 }
-            );
-
-            var direction = Mapper(
-                Choice(
-                    "in",
-                    "out",
-                    "const"
-                ),
-                x => (AST.ParameterDirection)Enum.Parse(typeof(AST.ParameterDirection), x.Item.Text, true)
-            );
-
-            // Note: we restrict index to 32bit, but specs say unlimited
-            var parameter = Mapper(
-                Composite(
-                    Optional(Composite("[", int32literal, "]")),
-                    direction,
-                    ident
-                ),
-
-                x => new AST.Parameter(
-                    x.Item, 
-                    x.FirstMapper(direction), 
-                    x.FirstMapper(ident), 
-                    x.FirstOrDefaultMapper(int32literal)
-                )
-            );
-
-            var parameters = Mapper(
-                Composite(parameter, Sequence(Composite(",", parameter))),
-                x => x.InvokeMappers(parameter).ToArray()
             );
 
             var parammap = Mapper(
@@ -738,6 +760,7 @@ namespace SMEIL.Parser
                     constDecl,
                     busDecl,
                     enumDecl,
+                    funcDecl,
                     instDecl,
                     genDecl
                 ),
