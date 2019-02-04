@@ -1,4 +1,4 @@
-type tdata { val: i32 };
+type tdata: { val: i32; };
 
 proc plusone(in inbus: tdata)
     bus plusout {
