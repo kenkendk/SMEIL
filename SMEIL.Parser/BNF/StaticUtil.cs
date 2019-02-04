@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace SMEIL.Parser.BNF
 {
@@ -53,5 +54,19 @@ namespace SMEIL.Parser.BNF
         /// <param name="token">The token being matched</param>
         /// <param name="matcher">The matcher function</param>
         public static Mapper<T> Mapper<T>(BNFItem token, Func<Match, T> matcher) { return new BNF.Mapper<T>(token, matcher); }
+
+        /// <summary>
+        /// Returns the mapper type for an item, or null if it is not a mapper type
+        /// </summary>
+        /// <param name="item">The item to investigate</param>
+        /// <returns>The mapper type or null</returns>
+        public static Type MapperType(BNFItem item)
+        {
+                return 
+                    item.GetType().IsConstructedGenericType && item.GetType().GetGenericTypeDefinition() == typeof(Mapper<>)
+                    ? item.GetType().GetGenericArguments().First()
+                    : null;
+
+        }
     }
 }

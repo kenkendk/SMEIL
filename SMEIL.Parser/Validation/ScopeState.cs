@@ -33,7 +33,7 @@ namespace SMEIL.Parser.Validation
         {
             m_parent = parent ?? throw new ArgumentNullException(nameof(parent));
             SymbolTable = new ChainedDictionary<string, object>(m_parent.Count == 0 ? null : parent.Peek().SymbolTable);
-            TypedefinitionTable = new ChainedDictionary<string, object>(m_parent.Count == 0 ? null : parent.Peek().SymbolTable);
+            TypedefinitionTable = new ChainedDictionary<string, object>(m_parent.Count == 0 ? null : parent.Peek().TypedefinitionTable);
             m_parent.Push(this);
         }
 

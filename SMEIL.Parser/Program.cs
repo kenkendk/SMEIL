@@ -16,21 +16,27 @@ namespace SMEIL.Parser
                 return;
             }
 
-            var state = Loader.LoadModuleAndImports(args[0], args.Skip(1).FirstOrDefault(), args.Skip(2).ToArray());
-            state.Validate();
+            try
+            {                
+                var state = Loader.LoadModuleAndImports(args[0], args.Skip(1).FirstOrDefault(), args.Skip(2).ToArray());
+                state.Validate();
 
-            var generator = new Codegen.VHDL.VHDLGenerator(state);
-            var rs = new Codegen.VHDL.VHDLGenerator.RenderState();
+                var generator = new Codegen.VHDL.VHDLGenerator(state);
+                var rs = new Codegen.VHDL.VHDLGenerator.RenderState();
 
-            foreach (var nv in state.AllInstances.OfType<Instance.Network>())
-            {
-                foreach (var p in nv.Instances.OfType<Instance.Process>())
+                foreach (var nv in state.AllInstances.OfType<Instance.Network>())
                 {
-                    var doc = generator.GenerateProcess(rs, p);
-                    File.WriteAllText($"test.{p.Name}.vhdl", doc);
-                    Console.WriteLine(doc);
+                    foreach (var p in nv.Instances.OfType<Instance.Process>())
+                    {
+                        var doc = generator.GenerateProcess(rs, p);
+                        File.WriteAllText($"test.{p.Name}.vhdl", doc);
+                        Console.WriteLine(doc);
+                    }
                 }
-
+            }
+            catch (ParserException ex)
+            {
+                Console.WriteLine("[{0}:{1}] \"{2}\": {3}", ex.Location.Line, ex.Location.LineOffset, ex.Location.Text, ex.Message);
             }
         }
     }

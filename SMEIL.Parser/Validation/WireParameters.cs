@@ -69,7 +69,27 @@ namespace SMEIL.Parser.Validation
                     if (value == null)
                         throw new ParserException("Unable to resolve expression", p.Expression);
 
-                    map[pos] = new Instance.MappedParameter(p, sourceinstance.SourceParameters[pos], value);
+                    var sourceparam = sourceinstance.SourceParameters[pos];
+
+                    var itemtype = state.InstanceType(value);
+                    var parametertype = 
+                        sourceparam.ExplictType == null
+                        ? itemtype
+                        : state.ResolveTypeName(sourceparam.ExplictType, scope);
+
+                    if (parametertype.IsValue && sourceparam.Direction == AST.ParameterDirection.Out)
+                        throw new ParserException($"Cannot use a value-type parameter as output: {sourceparam.Name}", sourceparam);
+
+                    // Check argument compatibility
+                    if (!state.CanUnifyTypes(itemtype, parametertype, scope))
+                        throw new ParserException($"Cannot use {p.Expression} of type {itemtype} as the argument for {sourceparam.Name} of type {parametertype}", sourceparam);
+                    
+                    // Check that the type we use as input is "larger" than the target
+                    var unified = state.UnifiedType(itemtype, parametertype, scope);
+                    if (!object.Equals(unified, itemtype))
+                        throw new ParserException($"Cannot use {p.Expression} of type {itemtype} as the argument for {sourceparam.Name} of type {parametertype}", sourceparam);
+
+                    map[pos] = new Instance.MappedParameter(p, sourceparam, value, parametertype);
 
                     // Register the instance in the local symbol table to allow
                     // refering to the instance with the parameter name

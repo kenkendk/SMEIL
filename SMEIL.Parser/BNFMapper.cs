@@ -634,8 +634,6 @@ namespace SMEIL.Parser
 
             var busDecl = Mapper(
                 Composite(
-                    Optional("exposed"),
-                    Optional("unique"),
                     "bus",
                     ident,
                     "{",
@@ -647,8 +645,6 @@ namespace SMEIL.Parser
 
                 x => new AST.BusDeclaration(
                     x.Item,
-                    x.SubMatches[0].SubMatches[0].SubMatches.Length == 1,
-                    x.SubMatches[0].SubMatches[1].SubMatches.Length == 1,
                     x.FirstMapper(ident),
                     x.InvokeMappers(busSignalDeclaration).ToArray()
                 )
@@ -710,10 +706,13 @@ namespace SMEIL.Parser
                     Choice(
                         typename,
                         Composite(
+                            "{",
                             busSignalDeclaration,
-                            Sequence(busSignalDeclaration)
+                            Sequence(busSignalDeclaration),
+                            "}"
                         )
-                    )
+                    ),
+                    ";"
                 ),
 
                 x => 
@@ -840,10 +839,7 @@ namespace SMEIL.Parser
             var process = Mapper(
                 Composite(
                     Optional(
-                        Choice(
-                            "sync",
-                            "async"
-                        )
+                        "clocked"
                     ),
                     "proc",
                     ident,
@@ -858,7 +854,7 @@ namespace SMEIL.Parser
 
                 x => new AST.Process(
                     x.Item,
-                    x.SubMatches[0].SubMatches[0].Item.Text == "sync",
+                    x.SubMatches[0].SubMatches[0].Item.Text == "clocked",
                     x.FirstMapper(ident),
                     x.FirstOrDefaultMapper(parameters),
                     x.SubMatches[0].SubMatches[6].InvokeMappers(declaration).ToArray(),

@@ -13,6 +13,10 @@ namespace SMEIL.Parser.AST
         /// The string value
         /// </summary>
         public readonly string Value;
+        /// <summary>
+        /// Gets the type of the constant
+        /// </summary>
+        public override ILType Type => ILType.String;
 
         /// <summary>
         /// Constructs a new string constan

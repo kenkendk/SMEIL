@@ -16,6 +16,11 @@ namespace SMEIL.Parser.AST
         public readonly IntegerConstant Index;
 
         /// <summary>
+        /// Gets the type of the constant
+        /// </summary>
+        public override ILType Type => ILType.SignedInteger;
+        
+        /// <summary>
         /// Constructs a new array index literal
         /// </summary>
         /// <param name="token">The token where the literal was found</param>

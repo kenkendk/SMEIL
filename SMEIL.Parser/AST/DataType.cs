@@ -29,7 +29,15 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// A bus instance type
         /// </summary>
-        Bus
+        Bus,
+        /// <summary>
+        /// The special undefined token
+        /// </summary>
+        Special,
+        /// <summary>
+        /// A string type
+        /// </summary>
+        String
     }
 
     /// <summary>
@@ -115,6 +123,10 @@ namespace SMEIL.Parser.AST
         /// </summary>
         public bool IsBus => Type == ILType.Bus;
 
+        /// <summary>
+        /// Gets a value indicating if the item is a value type
+        /// </summary>
+        public bool IsValue => !IsBus;
 
         /// <summary>
         /// Helper method to parse a token for a data type

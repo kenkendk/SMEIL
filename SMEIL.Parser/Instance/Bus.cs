@@ -21,10 +21,9 @@ namespace SMEIL.Parser.Instance
         public readonly AST.BusDeclaration Source;
 
         /// <summary>
-        /// The shape of the bus
+        /// The resolved data type of the bus
         /// </summary>
-        /// <value></value>
-        public readonly AST.BusShape Shape;
+        public readonly AST.DataType ResolvedType;
 
         /// <summary>
         /// The resolved type of the variable
@@ -43,7 +42,7 @@ namespace SMEIL.Parser.Instance
         public Bus(AST.BusDeclaration source)
         {
             Source = source ?? throw new ArgumentNullException(nameof(source));
-            Shape = new AST.BusShape(source.SourceToken, source.Signals);
+            ResolvedType = new AST.DataType(source.SourceToken, new AST.BusShape(source.SourceToken, source.Signals));
         }
     }
 }

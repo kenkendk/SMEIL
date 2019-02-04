@@ -15,6 +15,11 @@ namespace SMEIL.Parser.AST
         public readonly bool Value;
 
         /// <summary>
+        /// Gets the type of the constant
+        /// </summary>
+        public override ILType Type => ILType.Bool;
+
+        /// <summary>
         /// Constructs a new boolean constnt
         /// </summary>
         /// <param name="token">The token where the constant was found</param>

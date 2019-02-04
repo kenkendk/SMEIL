@@ -17,6 +17,10 @@ namespace SMEIL.Parser.AST
         /// The minor part of the number
         /// </summary>
         public readonly IntegerConstant Minor;
+        /// <summary>
+        /// Gets the type of the constant
+        /// </summary>
+        public override ILType Type => ILType.Float;
 
         /// <summary>
         /// Constructs a new floating constant

@@ -21,6 +21,47 @@ namespace SMEIL.Parser.Validation
     }
 
     /// <summary>
+    /// Container for various items related to the entry-level module and network
+    /// </summary>
+    public class TopLevelEntry
+    {
+        /// <summary>
+        /// The top-level network module
+        /// </summary>
+        public AST.Network SourceNetwork { get; internal set; }
+
+        /// <summary>
+        /// The top level (fake) network declaration
+        /// </summary>
+        public AST.InstanceDeclaration NetworkDeclaration { get; internal set; }
+
+        /// <summary>
+        /// The top level network instance
+        /// </summary>
+        public Instance.Network NetworkInstance { get; internal set; }
+
+        /// <summary>
+        /// The commandline arguments provided to the top-level network
+        /// </summary>
+        public string[] CommandlineArguments { get; internal set; }
+
+        /// <summary>
+        /// The entry module
+        /// </summary>
+        public AST.Module Module { get; internal set; }
+
+        /// <summary>
+        /// The top-level input busses
+        /// </summary>
+        public readonly List<Instance.Bus> InputBusses = new List<Bus>();
+        /// <summary>
+        /// The top-level output busses
+        /// </summary>
+        public readonly List<Instance.Bus> OutputBusses = new List<Bus>();
+
+    }
+
+    /// <summary>
     /// The state created during validation
     /// </summary>
     public class ValidationState
@@ -71,29 +112,14 @@ namespace SMEIL.Parser.Validation
         private Stack<ScopeState> SymbolScopes = new Stack<ScopeState>();
 
         /// <summary>
-        /// The top-level network module
-        /// </summary>
-        public AST.Network TopLevelNetwork { get; internal set; }
-
-        /// <summary>
-        /// The top level (fake) network declaration
-        /// </summary>
-        public AST.InstanceDeclaration TopLevelNetworkDeclaration { get; internal set; }
-
-        /// <summary>
-        /// The top level network instance
-        /// </summary>
-        public Instance.Network TopLevelNetworkInstance { get; internal set; }
-
-        /// <summary>
-        /// The entry module
-        /// </summary>
-        public AST.Module EntryModule { get; internal set; }
-
-        /// <summary>
         /// Map of signals and their usage
         /// </summary>
         public readonly Dictionary<Instance.Process, Dictionary<object, ItemUsageDirection>> ItemDirection = new Dictionary<Instance.Process, Dictionary<object, ItemUsageDirection>>();
+
+        /// <summary>
+        /// The top-level entry details
+        /// </summary>
+        public readonly TopLevelEntry TopLevel = new TopLevelEntry();
 
         /// <summary>
         /// Creates a new validation state shadowing the 
@@ -111,7 +137,7 @@ namespace SMEIL.Parser.Validation
             get
             {
                 var work = new Queue<Instance.IInstance>();
-                work.Enqueue(TopLevelNetworkInstance);
+                work.Enqueue(TopLevel.NetworkInstance);
 
                 while (work.Count != 0)
                 {
@@ -255,6 +281,29 @@ namespace SMEIL.Parser.Validation
         }
 
         /// <summary>
+        /// Constructs a <see cref="AST.Name" /> instance from a string
+        /// </summary>
+        /// <param name="name">The string to create a name from</param>
+        /// <returns>The name</returns>
+        public static AST.Name AsName(string name)
+        {
+            var ids = name.Split(".").Select(x => new AST.Identifier(new ParseToken(0, 0, 0, x))).ToArray();
+            return new AST.Name(ids.First().SourceToken, ids, null);
+        }
+
+
+        /// <summary>
+        /// Finds the item with the given name
+        /// </summary>
+        /// <param name="name">The name to look for</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns>The item matching the name, or null</returns>
+        public object FindSymbol(string name, ScopeState scope)
+        {
+            return FindSymbol(AsName(name), scope);
+        }
+
+        /// <summary>
         /// Finds the item with the given name
         /// </summary>
         /// <param name="name">The name to look for</param>
@@ -347,14 +396,25 @@ namespace SMEIL.Parser.Validation
             }
 
             return res;
-        }        
+        }
 
         /// <summary>
         /// Resolves a data type in the given scope
         /// </summary>
         /// <param name="name">The name to resolve</param>
         /// <param name="scope">The scope to use</param>
-        /// <returns></returns>
+        /// <returns>The datatype</returns>
+        public DataType ResolveTypeName(string name, ScopeState scope)
+        {
+            return ResolveTypeName(new AST.TypeName(AsName(name), null), scope);
+        }
+
+        /// <summary>
+        /// Resolves a data type in the given scope
+        /// </summary>
+        /// <param name="name">The name to resolve</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns>The datatype</returns>
         public DataType ResolveTypeName(AST.TypeName name, ScopeState scope)
         {
             var visited = new HashSet<AST.Name>();
@@ -376,9 +436,37 @@ namespace SMEIL.Parser.Validation
                     name = nt;
                 else if (rs is AST.DataType dt)
                     return dt;
+                else if (rs is AST.TypeDefinition td)
+                {
+                    if (td.Shape != null)
+                        return new DataType(td.SourceToken, td.Shape);
+
+                    name = td.Alias;
+                }
                 else
                     throw new ParserException($"Resolved {name.Alias} to {rs}, expected a type", name);
             }
+        }
+
+        /// <summary>
+        /// Returns the actual type for an instance
+        /// </summary>
+        /// <param name="instance"></param>
+        /// <returns></returns>
+        public DataType InstanceType(Instance.IInstance instance)
+        {
+            if (instance is Instance.Bus busInstance)
+                return busInstance.ResolvedType;
+            else if (instance is Instance.ConstantReference constRef)
+                return constRef.ResolvedType;
+            else if (instance is Instance.Literal literalInstance)
+                return new AST.DataType(literalInstance.Source.SourceToken, literalInstance.Source.Type, -1);
+            else if (instance is Instance.Signal signalInstance)
+                return signalInstance.ResolvedType;
+            else if (instance is Instance.Variable variableInstance)
+                return variableInstance.ResolvedType;
+            else
+                throw new ArgumentException($"Unable to get the type of {instance}");
         }
 
         /// <summary>
@@ -478,7 +566,7 @@ namespace SMEIL.Parser.Validation
             }
 
             foreach (var tdef in module.TypeDefinitions)
-                scope.SymbolTable.Add(tdef.Name.Name, tdef);
+                scope.TypedefinitionTable.Add(tdef.Name.Name, tdef);
         }
 
         /// <summary>

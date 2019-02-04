@@ -228,7 +228,7 @@ namespace SMEIL.Parser.Validation
                 return variable.ResolvedType = state.ResolveTypeName(variable.Source.Type, scope);
             else if (symb is Instance.Bus bus)
             {
-                var shape = state.ResolveSignalsToIntrinsic(bus.Shape.Signals, scope);
+                var shape = state.ResolveSignalsToIntrinsic(bus.ResolvedType.Shape.Signals, scope);
                 bus.ResolvedSignalTypes = shape.ToDictionary(x => x.Key, x => x.Value.IntrinsicType);
                 return new DataType(bus.Source.SourceToken, new BusShape(name.SourceToken, shape));
             }

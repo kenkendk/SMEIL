@@ -1,7 +1,9 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 2012
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SMEIL.Parser", "SMEIL.Parser/SMEIL.Parser.csproj", "{05F2310C-7E2E-4991-80DB-04494FF2AD82}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SMEIL.Parser", "SMEIL.Parser\SMEIL.Parser.csproj", "{05F2310C-7E2E-4991-80DB-04494FF2AD82}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unittest", "Unittest\Unittest.csproj", "{5E31C7DB-7574-42C8-B77D-D6D125405944}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -13,5 +15,9 @@ Global
 		{05F2310C-7E2E-4991-80DB-04494FF2AD82}.Debug|AnyCPU.Build.0 = Debug|AnyCPU
 		{05F2310C-7E2E-4991-80DB-04494FF2AD82}.Release|AnyCPU.ActiveCfg = Release|AnyCPU
 		{05F2310C-7E2E-4991-80DB-04494FF2AD82}.Release|AnyCPU.Build.0 = Release|AnyCPU
+		{5E31C7DB-7574-42C8-B77D-D6D125405944}.Debug|AnyCPU.ActiveCfg = Debug|Any CPU
+		{5E31C7DB-7574-42C8-B77D-D6D125405944}.Debug|AnyCPU.Build.0 = Debug|Any CPU
+		{5E31C7DB-7574-42C8-B77D-D6D125405944}.Release|AnyCPU.ActiveCfg = Release|Any CPU
+		{5E31C7DB-7574-42C8-B77D-D6D125405944}.Release|AnyCPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

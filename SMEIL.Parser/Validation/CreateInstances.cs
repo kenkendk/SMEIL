@@ -17,7 +17,7 @@ namespace SMEIL.Parser.Validation
         public void Validate(ValidationState state)
         {
             // Start the process with the network
-            state.TopLevelNetworkInstance = CreateAndRegisterInstance(state, state.TopLevelNetworkDeclaration, state.TopLevelNetwork);
+            state.TopLevel.NetworkInstance = CreateAndRegisterInstance(state, state.TopLevel.NetworkDeclaration, state.TopLevel.SourceNetwork);
         }
 
         /// <summary>

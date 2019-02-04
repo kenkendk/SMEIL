@@ -22,6 +22,10 @@ namespace SMEIL.Parser.AST
         /// The value as an int32
         /// </summary>
         public int ToInt32 => int.Parse(Value);
+        /// <summary>
+        /// Gets the type of the constant
+        /// </summary>
+        public override ILType Type => ILType.SignedInteger;
 
         /// <summary>
         /// Constructs a new integer constant
