@@ -11,25 +11,57 @@ namespace Unittest
         [TestMethod]
         public void TestAdderTyped()
         {
-            TestAdder_core("../../../adder_typed.sme");
+            TestAdder_core("../../../smeil/simple/adder_typed.sme");
         }
 
         [TestMethod]
         public void TestAdderUntyped()
         {
-            TestAdder_core("../../../adder_untyped.sme");
+            TestAdder_core("../../../smeil/simple/adder_untyped.sme");
         }
 
         [TestMethod]
         public void TestAdderIdUntyped()
         {
-            TestAdderId_core("../../../adder_id_untyped.sme");
+            TestAdderId_core("../../../smeil/simple/adder_id_untyped.sme");
         }
 
         [TestMethod]
         public void TestAdderIdTyped()
         {
-            TestAdderId_core("../../../adder_id_typed.sme");
+            TestAdderId_core("../../../smeil/simple/adder_id_typed.sme");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestAdderSyntaxError1()
+        {
+            try
+            {
+                Loader.LoadModuleAndImports("../../../smeil/error/syntax/adder_syntax_error1.sme", null, null);
+            }
+            catch (ParserException pex)
+            {
+                if (pex.Location.Line != 1 || pex.Location.LineOffset != 24 || pex.Location.Text != "}")
+                    throw new ArgumentException("Incorrect reported error position", pex);
+                throw;
+            }
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestAdderSyntaxError2()
+        {
+            try
+            {
+                Loader.LoadModuleAndImports("../../../smeil/error/syntax/adder_syntax_error2.sme", null, null);
+            }
+            catch (ParserException pex)
+            {
+                if (pex.Location.Line != 1 || pex.Location.LineOffset != 12 || pex.Location.Text != "{")
+                    throw new ArgumentException("Incorrect reported error position", pex);
+                throw;
+            }
         }
 
         private void TestAdderId_core(string path)

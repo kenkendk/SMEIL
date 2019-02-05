@@ -51,6 +51,7 @@ namespace SMEIL.Parser.BNF
         public IEnumerable<T> InvokeDerivedMappers<T>()
         {
             return Flat
+                .Where(n => n.Matched)
                 .Where(n => n != this)
                 .Where(
                     n => 
@@ -122,6 +123,7 @@ namespace SMEIL.Parser.BNF
         public IEnumerable<Tuple<T, Match>> GetMappers<T>(BNF.Mapper<T> instance = null)
         {
             return Flat
+                .Where(n => n.Matched)
                 .Where(n => n.Token is BNF.Mapper<T>)
                 .Where(n => instance == null || n.Token == instance)
                 .Select(n => 
@@ -166,5 +168,20 @@ namespace SMEIL.Parser.BNF
                         yield return n;                    
             }
         }
+
+        /// <summary>
+        /// Returns the longest match
+        /// </summary>
+        /// <returns>The sequence of match entries for the longest match</returns>
+        public List<Match> LongestAttempt()
+        {
+            if (this.SubMatches == null || this.SubMatches.Length == 0)
+                return new List<Match>() { this };
+
+            var res = this.SubMatches.Select(x => x.LongestAttempt()).OrderByDescending(x => x.Count(y => y.Matched)).First();
+            res.Insert(0, this);
+
+            return res;
+        }        
     }
 }

@@ -55,7 +55,7 @@ namespace SMEIL.Parser
                 x => new AST.FloatingConstant(
                     x.Item, 
 
-                    x.SubMatches[0].SubMatches.Length == 0
+                    x.SubMatches[0].SubMatches.Length == 0 || !x.SubMatches[0].SubMatches[0].Matched
                         ? new AST.IntegerConstant(x.Item, "0")
                         : x.SubMatches[0].FirstMapper(integer),
 
@@ -734,7 +734,7 @@ namespace SMEIL.Parser
 
                 x => new AST.ParameterMap(
                     x.Item,
-                    x.SubMatches[0].SubMatches[0].SubMatches.Length == 0 
+                    x.SubMatches[0].SubMatches[0].SubMatches.Length == 0 || !x.SubMatches[0].SubMatches[0].SubMatches[0].Matched
                         ? null
                         : x.FirstMapper(ident),
                     x.FirstMapper(expression)
@@ -914,6 +914,24 @@ namespace SMEIL.Parser
 
             //var match = module.Match(tokens);
             var match = module.Match(tokens);
+            if (!match.Matched)
+            {
+                var bestmatch = match.LongestAttempt();
+                var firsterror = bestmatch.Last(x => !x.Matched);
+                if (firsterror.Token is BNF.Composite sequence)
+                {
+                    var err = firsterror.SubMatches.First(x => !x.Matched);
+                    throw new ParserException($"Found \"{err.Item.Text}\" but expected \"{err.Token}\"", err.Item);
+                }
+                else if (firsterror.Token is BNF.Choice choice)
+                {
+                    throw new ParserException($"Found \"{firsterror.Item.Text}\" but expected one of: \"{string.Join("\", \"", choice.Choices.Select(x => x.ToString()))}\"", firsterror.Item);
+                }
+                else
+                {
+                    throw new ParserException($"Found \"{firsterror.Item.Text}\" but expected: \"{firsterror.Token}\"", firsterror.Item);
+                }
+            }
             return match.FirstMapper(module);
         }
     }

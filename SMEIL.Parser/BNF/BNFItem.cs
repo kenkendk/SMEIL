@@ -37,7 +37,7 @@ namespace SMEIL.Parser.BNF
         /// <returns>A match or <c>null</c></returns>
         public virtual Match Match(IBufferedEnumerator<ParseToken> enumerator)
         {
-            return DoMatch(enumerator, false, new List<Match>());
+            return DoMatch(enumerator, new List<Match>());
         }
 
         /// <summary>
@@ -45,17 +45,12 @@ namespace SMEIL.Parser.BNF
         /// </summary>
         /// <param name="enumerator">The sequence of items</param>
         /// <returns>A match or <c>null</c></returns>
-        protected virtual Match DoMatch(IBufferedEnumerator<ParseToken> enumerator, bool optional, List<Match> choices)
+        protected virtual Match DoMatch(IBufferedEnumerator<ParseToken> enumerator, List<Match> choices)
         {
             //Console.WriteLine("Trying: {1} with {0}", this.BuildString(new HashSet<BNFItem>(), 1), enumerator.Current);
 
             if (enumerator.Empty)
-            {
-                if (!optional)
-                    throw new Exception("No more data?");
-                else
-                    return new Match(this, default(ParseToken), new Match[0], false);
-            }
+                return new Match(this, default(ParseToken), new Match[0], false);
 
             var start = enumerator.Current;
             var text = start.Text;
@@ -65,8 +60,6 @@ namespace SMEIL.Parser.BNF
                 var res = new Match(this, start, null, text == literalToken.Value);
                 if (res.Matched)
                     enumerator.MoveNext();
-                else if (!optional)
-                    ThrowMatchFailure(res);
                 return res;
             }
             else if (this is RegEx regExToken)
@@ -76,8 +69,6 @@ namespace SMEIL.Parser.BNF
 
                 if (res.Matched)
                     enumerator.MoveNext();
-                else if (!optional)
-                    ThrowMatchFailure(res);
                 return res;
             }
             else if (this is CustomItem customToken)
@@ -86,33 +77,26 @@ namespace SMEIL.Parser.BNF
 
                 if (res.Matched)
                     enumerator.MoveNext();
-                else if (!optional)
-                    ThrowMatchFailure(res);
                 return res;
             }
             else if (this is Composite compositeToken)
             {
-                if (optional)
-                    enumerator.Snapshot();
+                enumerator.Snapshot();
                 var subItems = new List<Match>();
 
                 foreach (var n in compositeToken.Items)
                 {
-                    var s = n.DoMatch(enumerator, optional, choices);
+                    var s = n.DoMatch(enumerator, choices);
                     subItems.Add(s);
 
                     if (!s.Matched)
                     {
-                        if (!optional)
-                            throw new Exception($"Failed to match {this} with {start}");
-
                         enumerator.Rollback();
                         return new Match(this, start, subItems.ToArray(), false);
                     }
                 }
 
-                if (optional)
-                    enumerator.Commit();
+                enumerator.Commit();
                 return new Match(this, start, subItems.ToArray(), true);
             }
             else if (this is Choice choiceToken)
@@ -120,8 +104,7 @@ namespace SMEIL.Parser.BNF
                 var subItems = new List<Match>();
                 foreach (var n in choiceToken.Choices)
                 {
-                    if (optional)
-                        enumerator.Snapshot();
+                    enumerator.Snapshot();
 
                     Match s;
 
@@ -133,42 +116,33 @@ namespace SMEIL.Parser.BNF
                     else
                     {
                         choices.Add(new BNF.Match(n, start, null, false));
-                        s = n.DoMatch(enumerator, true, choices);
+                        s = n.DoMatch(enumerator, choices);
                         choices.RemoveAt(choices.Count - 1);
                     }
 
                     subItems.Add(s);
                     if (s.Matched)
                     {
-                        if (optional)
-                            enumerator.Commit();
+                        enumerator.Commit();
                         return new Match(this, start, new Match[] { s }, true);
                     }
 
-                    if (optional)
-                        enumerator.Rollback();
+                    enumerator.Rollback();
                 }
 
-                if (optional)
-                    return new Match(this, start, subItems.ToArray(), false);
-                else
-                    ThrowMatchFailure(new Match(this, start, subItems.ToArray(), false));
-
+                return new Match(this, start, subItems.ToArray(), false);
             }
             else if (this is Optional optionalToken)
             {
-                if (optional)
-                    enumerator.Snapshot();
-                var s = optionalToken.Item.DoMatch(enumerator, true, choices);
+                enumerator.Snapshot();
+                var s = optionalToken.Item.DoMatch(enumerator, choices);
                 if (!s.Matched)
                 {
-                    if (optional)
-                        enumerator.Rollback();
-                    return new Match(this, start, new Match[] { }, true);
+                    enumerator.Rollback();
+                    return new Match(this, start, new Match[] { s }, true);
                 }
 
-                if (optional)
-                    enumerator.Commit();
+                enumerator.Commit();
                 return new Match(this, start, new Match[] { s }, true);
             }
             else if (this is Sequence sequenceToken)
@@ -176,17 +150,15 @@ namespace SMEIL.Parser.BNF
                 var items = new List<Match>();
                 while(true)
                 {
-                    if (optional)
-                        enumerator.Snapshot();
-                    var n = sequenceToken.Items.DoMatch(enumerator, true, choices);
+                    enumerator.Snapshot();
+                    var n = sequenceToken.Items.DoMatch(enumerator, choices);
                     if (!n.Matched)
                     {
-                        if (optional)
-                            enumerator.Rollback();
+                        enumerator.Rollback();
+                        items.Add(n);
                         break;
                     }
-                    if (optional)
-                        enumerator.Commit();
+                    enumerator.Commit();
                     items.Add(n);
                 }
 
@@ -196,7 +168,7 @@ namespace SMEIL.Parser.BNF
             {
                 var prop = this.GetType().GetField(nameof(Mapper<int>.Token));
                 var token = prop.GetValue(this);
-                var match = ((BNFItem)token).DoMatch(enumerator, optional, choices);
+                var match = ((BNFItem)token).DoMatch(enumerator, choices);
                 return new Match(this, start, new BNF.Match[] { match }, match.Matched);
             }
 
@@ -219,18 +191,6 @@ namespace SMEIL.Parser.BNF
                 throw new ParserException($"Failed to match \"{bestshot.Item.Text}\" expected: {potentials[0].Name}", bestshot.Item);
             else
                 throw new ParserException($"Failed to match \"{bestshot.Item.Text}\" expected one of: {string.Join(", ", potentials.Select(x => x.Name))}", bestshot.Item);
-        }
-
-        private Match[] LongestAttempt(Match start)
-        {
-            var res = new List<Match>();
-            while(start != null)
-            {
-                res.Add(start);
-                start = start.SubMatches?.OrderByDescending(x => x.SubMatches?.Length).FirstOrDefault();
-            }
-            
-            return res.ToArray();
         }
 
         /// <summary>
