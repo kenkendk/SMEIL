@@ -44,6 +44,7 @@
   \alt <bus-decl>
   \alt <const-decl>
   \alt <gen-decl>
+  \alt <connect-decl>
 
   <process-decl> ::= <var-decl>
   \alt <const-decl>
@@ -78,6 +79,10 @@
   <bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
 
   <bus-signal-decl> ::= <ident> `:' <type-name> [ `=' <expression> ] [ <range> ] `;'
+
+  <connect-entry> ::= <ident> '->' <ident>
+
+  <connect-decl> ::= connect <connect-entry> \{ <connect-entry> \} ';'
 
   <inst-decl> ::= `instance' <instance-name> `of' <ident> \\`(' [ <param-map> 
   \{ `,' <param-map> \} ] `)' `;'
@@ -230,6 +235,7 @@
   \item bus
   \item case
   \item const
+  \item connect
   \item clocked
   \item default
   \item elif

@@ -97,6 +97,17 @@ namespace SMEIL.Parser.BNF
         /// <param name="instance">The instance to find</param>
         /// <typeparam name="T">The mapped type</typeparam>
         /// <returns>The item returned by the mapper</returns>
+        public T LastMapper<T>(BNF.Mapper<T> instance)
+        {
+            return InvokeMappers(instance).First();
+        }
+
+        /// <summary>
+        /// Gets the first mapper that has the given instance
+        /// </summary>
+        /// <param name="instance">The instance to find</param>
+        /// <typeparam name="T">The mapped type</typeparam>
+        /// <returns>The item returned by the mapper</returns>
         public T FirstOrDefaultMapper<T>(BNF.Mapper<T> instance)
         {
             return InvokeMappers(instance).FirstOrDefault();

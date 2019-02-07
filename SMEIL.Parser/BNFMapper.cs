@@ -789,6 +789,28 @@ namespace SMEIL.Parser
                 )
             );
 
+            var connectEntry = Mapper(
+                Composite(
+                    ident,
+                    "->",
+                    ident
+                ),
+
+                x => new AST.ConnectEntry(x.Item, x.FirstMapper(ident), x.LastMapper(ident))
+            );
+
+            var connectDecl = Mapper(
+                Composite(
+                    "connect",
+                    connectEntry,
+                    Sequence(
+                        connectEntry
+                    )
+                ),
+
+                x => new AST.ConnectDeclaration(x.Item, x.InvokeMappers(connectEntry).ToArray())
+            );
+
             var networkDecl = Mapper(
                 null,
                 x => x.FirstDerivedMapper<AST.NetworkDeclaration>()
