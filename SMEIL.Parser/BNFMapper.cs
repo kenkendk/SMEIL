@@ -759,7 +759,16 @@ namespace SMEIL.Parser
                 Composite(
                     "instance", instanceName, 
                     "of", ident,
-                    "(", parammap, Sequence(Composite(",", parammap)), ")",
+                    "(", 
+                        Optional(
+                            Composite(
+                                parammap, 
+                                Sequence(
+                                    Composite(",", parammap)
+                                )
+                            )
+                        ), 
+                    ")",
                     ";"
                 ),
                 x => new AST.InstanceDeclaration(
@@ -936,25 +945,44 @@ namespace SMEIL.Parser
 
             //var match = module.Match(tokens);
             var match = module.Match(tokens);
-            if (!match.Matched)
+
+            // If we have trailing unparsed text, make a guess as to why it fails to parse
+            if (!tokens.Empty)
             {
-                var bestmatch = match.LongestAttempt();
-                var firsterror = bestmatch.Last(x => !x.Matched);
-                if (firsterror.Token is BNF.Composite sequence)
-                {
-                    var err = firsterror.SubMatches.First(x => !x.Matched);
-                    throw new ParserException($"Found \"{err.Item.Text}\" but expected \"{err.Token}\"", err.Item);
-                }
-                else if (firsterror.Token is BNF.Choice choice)
-                {
-                    throw new ParserException($"Found \"{firsterror.Item.Text}\" but expected one of: \"{string.Join("\", \"", choice.Choices.Select(x => x.ToString()))}\"", firsterror.Item);
-                }
-                else
-                {
-                    throw new ParserException($"Found \"{firsterror.Item.Text}\" but expected: \"{firsterror.Token}\"", firsterror.Item);
-                }
+                var start = match;
+                while(start != null && start.Matched)
+                    start = start.SubMatches.LastOrDefault();
+
+                if (start != null && !start.Matched)
+                    ThrowParserError(start);
+
+                // General error message
+                throw new ParserException($"Unable to parse item \"{tokens.Current}\"", tokens.Current);
             }
+                
+            if (!match.Matched)
+                ThrowParserError(match);
+
             return match.FirstMapper(module);
+        }
+
+        public static void ThrowParserError(BNF.Match match)
+        {
+            var bestmatch = match.LongestAttempt();
+            var firsterror = bestmatch.Last(x => !x.Matched);
+            if (firsterror.Token is BNF.Composite sequence)
+            {
+                var err = firsterror.SubMatches.First(x => !x.Matched);
+                throw new ParserException($"Found \"{err.Item.Text}\" but expected \"{err.Token}\"", err.Item);
+            }
+            else if (firsterror.Token is BNF.Choice choice)
+            {
+                throw new ParserException($"Found \"{firsterror.Item.Text}\" but expected one of: \"{string.Join("\", \"", choice.Choices.Select(x => x.ToString()))}\"", firsterror.Item);
+            }
+            else
+            {
+                throw new ParserException($"Found \"{firsterror.Item.Text}\" but expected: \"{firsterror.Token}\"", firsterror.Item);
+            }
         }
     }
 }
