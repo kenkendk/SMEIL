@@ -41,7 +41,7 @@ namespace SMEIL.Parser.AST
         {
             Clocked = clocked;
             Name = name ?? throw new ArgumentNullException(nameof(name));
-            Parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
+            Parameters = parameters ?? new Parameter[0];
             Declarations = declarations ?? throw new ArgumentNullException(nameof(declarations));
             Statements = statements ?? throw new ArgumentNullException(nameof(statements));
         }
