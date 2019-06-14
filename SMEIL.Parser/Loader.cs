@@ -151,6 +151,12 @@ namespace SMEIL.Parser
                             )
                     );
 
+                    newbus.ResolvedSignalTypes = 
+                        newbus
+                        .Instances
+                        .OfType<Instance.Signal>()
+                        .ToDictionary(x => x.Name, x => x.ResolvedType);
+
                     if (p.Direction == AST.ParameterDirection.Out)
                         state.TopLevel.OutputBusses.Add(newbus);
                     else if (p.Direction == AST.ParameterDirection.In)
