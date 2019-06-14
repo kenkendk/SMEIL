@@ -7,10 +7,16 @@
     <RootNamespace>SMEIL.Parser</RootNamespace>
     <AnyCPU />
     <OutputType>Exe</OutputType>
+    <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
   </PropertyGroup>
   
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType />
     <DocumentationFile>bin\Release\netstandard2.0\SMEIL.Parser.xml</DocumentationFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Codegen\VHDL\*.vhdl" />
+</ItemGroup>
+  
 </Project>

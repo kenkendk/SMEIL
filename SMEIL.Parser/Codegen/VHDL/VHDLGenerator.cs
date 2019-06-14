@@ -40,22 +40,38 @@ namespace SMEIL.Parser.Codegen.VHDL
         //public readonly Simulation Simulation;
 
         /// <summary>
-        /// The folder where data is place
-        /// </summary>
-        public readonly string TargetFolder;
-        /// <summary>
-        /// The folder where backups are stored
-        /// </summary>
-        public readonly string BackupFolder;
-        /// <summary>
         /// The name of the file where a CSV trace is stored
         /// </summary>
-        public readonly string CSVTracename;
+        public string CSVTracename;
+        /// <summary>
+        /// The number of ticks to run the simulation for
+        /// </summary>
+        public int Ticks = 100;
 
         /// <summary>
         /// Sequence of custom VHDL files to include in the compilation
         /// </summary>
-        public readonly IEnumerable<string> CustomFiles;
+        public IEnumerable<string> CustomFiles;
+
+        /// <summary>
+        /// The assigned bus names
+        /// </summary>
+        public readonly Dictionary<Instance.Bus, string> BusNames;
+
+        /// <summary>
+        /// The assigned process names
+        /// </summary>
+        public readonly Dictionary<Instance.Process, string> ProcessNames;
+
+        /// <summary>
+        /// The list of all busses
+        /// </summary>
+        public readonly List<Instance.Bus> AllBusses;
+
+        /// <summary>
+        /// The list of all processes
+        /// </summary>
+        public readonly List<Instance.Process> AllProcesses;
 
         /// <summary>
         /// The state passed to each render step
@@ -145,6 +161,46 @@ namespace SMEIL.Parser.Codegen.VHDL
         public VHDLGenerator(Validation.ValidationState validationstate)
         {
             ValidationState = validationstate;
+
+            // List of instantiated busses
+            AllBusses = validationstate
+                .AllInstances
+                .OfType<Instance.Bus>()
+                .Concat(validationstate.TopLevel.InputBusses)
+                .Concat(validationstate.TopLevel.OutputBusses)
+                .Distinct()
+                .ToList();
+
+            // Figure out which instances are from the same source declaration
+            var buscounters = AllBusses.GroupBy(x => x.Source).ToDictionary(x => x.Key, x => x.ToList());
+
+            // Give the instances names, suffixed with the instance number if there are more than one
+            BusNames = AllBusses
+                .Select(x => new
+                {
+                    Key = x,
+                    Name = x.Name + (buscounters[x.Source].Count == 1 ? "" : "_" + (buscounters[x.Source].IndexOf(x) + 1).ToString())
+                })
+                .ToDictionary(x => x.Key, x => x.Name);
+
+            // List of instantiated busses
+            AllProcesses = validationstate
+                .AllInstances
+                .OfType<Instance.Process>()
+                .Distinct()
+                .ToList();
+
+            // Figure out which instances are from the same source declaration
+            var proccounters = AllProcesses.GroupBy(x => x.Name).ToDictionary(x => x.Key, x => x.ToList());
+
+            // Give the instances names, suffixed with the instance number if there are more than one
+            ProcessNames = AllProcesses
+                .Select(x => new
+                {
+                    Key = x,
+                    Name = x.Name + (proccounters[x.Name].Count == 1 ? "" : "_" + (proccounters[x.Name].IndexOf(x) + 1).ToString())
+                })
+                .ToDictionary(x => x.Key, x => x.Name);
         }
 
         /// <summary>
@@ -152,7 +208,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// </summary>
         /// <param name="state"></param>
         /// <returns></returns>
-        public string GenerateFilePreamble(RenderState state)
+        public string GenerateVHDLFilePreamble(RenderState state)
         {
             return RenderLines(
                 state,
@@ -161,8 +217,9 @@ namespace SMEIL.Parser.Codegen.VHDL
                 "use IEEE.STD_LOGIC_1164.ALL;",
                 "use IEEE.NUMERIC_STD.ALL;",
                 "",
-                "--library SYSTEM_TYPES;",
-                "use work.SYSTEM_TYPES.ALL;",
+                // We do not currently have any need for system types
+                // "--library SYSTEM_TYPES;",
+                // "use work.SYSTEM_TYPES.ALL;",
                 "",
                 "--library CUSTOM_TYPES;",
                 "use work.CUSTOM_TYPES.ALL;",
@@ -195,44 +252,940 @@ namespace SMEIL.Parser.Codegen.VHDL
             return string.Join(Environment.NewLine, lines.Select(x => (state.Indent + x).TrimEnd())) + Environment.NewLine;
         }
 
+        
+        /// <summary>
+        /// Returns a list of the support files with the resource and the filename
+        /// </summary>
+        private static IEnumerable<(System.IO.Stream, string)> SupportFiles
+        {
+            get
+            {
+                var asm = typeof(VHDLGenerator).Assembly;
+                var ns = typeof(VHDLGenerator).Namespace + ".";
+
+                return asm.GetManifestResourceNames()
+                    .Where(x => x.StartsWith(ns))
+                    .Select(x => (asm.GetManifestResourceStream(x), x.Substring(ns.Length)));
+            }
+        }
+        
+        /// <summary>
+        /// Copies all embedded support files to the output folder
+        /// </summary>
+        /// <param name="targetfolder">The folder to extract to</param>
+        public void CopySupportFiles(string targetfolder)
+        {
+            foreach(var (s, file) in SupportFiles)
+                    using(var fs = System.IO.File.Create(System.IO.Path.Combine(targetfolder, file)))
+                        s.CopyTo(fs);
+        }
+
+        /// <summary>
+        /// Creates a Makefile for compiling the and testing the generated code with GHDL
+        /// </summary>
+        /// <param name="state">The render state</param>
+        /// <param name="filenames">The filenames assigned to the processes</param>
+        /// <param name="standard">The VHDL standard to use</param>
+        /// <returns>The generated Makefile</returns>
+        public string GenerateMakefile(RenderState state, Dictionary<Instance.Process, string> filenames, string standard)
+        {
+            var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
+            var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+
+            var decl = RenderLines(state,
+                "all: test export",
+                "",
+                $"testbench: {name}_tb",
+                "build: export testbench",
+                "",
+                "# Use a temporary folder for compiled stuff",
+                "WORKDIR=work",
+                "",
+                "# All code should be VHDL93 compliant, ",
+                "# but 93c is a bit easier to work with",
+                $"STD={standard}",
+                "",
+                "# Eveything should compile with clean IEEE,",
+                "# but the test-bench and CSV util's require",
+                "# std_logic_textio from Synopsys",
+                "IEEE=synopsys",
+                "",
+                "# VCD trace file for GTKWave",
+                "VCDFILE=trace.vcd",
+                ""
+            );
+
+            var cust_tag = string.Empty;
+            var extrafiles = SupportFiles.Select(a => a.Item2).Concat(CustomFiles ?? new string[0]);
+
+            if (extrafiles.Any())
+            {
+                cust_tag = " custom_files";
+                var custfiles = string.Join(" ", extrafiles.Select(x => $"$(WORKDIR)/{System.IO.Path.ChangeExtension(x, null)}.o"));
+                decl += RenderLines(state,
+                    $"{cust_tag.Trim()}: $(WORKDIR) {custfiles}",
+                    ""
+                );
+            }
+
+            decl += RenderLines(state,
+                "$(WORKDIR):",
+                "\tmkdir $(WORKDIR)",
+                "",
+                $"$(WORKDIR)/customtypes.o: customtypes.vhdl $(WORKDIR)",
+                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) customtypes.vhdl",
+                ""
+            );
+
+            foreach (var file in filenames.Values)
+            {
+                decl += RenderLines(state,
+                    $"$(WORKDIR)/{file}.o: {file}.vhdl $(WORKDIR)/customtypes.o $(WORKDIR){cust_tag}",
+                    $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) {file}.vhdl",
+                    ""
+                );
+                
+            }
+            if (!string.IsNullOrWhiteSpace(cust_tag))
+            {
+                foreach (var file in extrafiles)
+                {
+                    decl += RenderLines(state,
+                        $"$(WORKDIR)/{System.IO.Path.ChangeExtension(file, null)}.o: {file} $(WORKDIR)/customtypes.o $(WORKDIR)",
+                        $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) {file}",
+                        ""
+                    );
+                }
+            }
+
+            decl += RenderLines(state,
+                $"$(WORKDIR)/toplevel.o: toplevel.vhdl $(WORKDIR)/customtypes.o {string.Join(" ", filenames.Values.Select(x => $"$(WORKDIR)/{x}.o"))}{cust_tag}",
+                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) toplevel.vhdl",
+                "",
+                $"$(WORKDIR)/testbench.o: testbench.vhdl $(WORKDIR)/toplevel.o",
+                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) testbench.vhdl",
+                "",
+                $"{name}_tb: $(WORKDIR)/testbench.o",
+                $"\tghdl -e --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) {name}_tb",
+                "",
+                $"export: $(WORKDIR)/toplevel.o",
+                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) export.vhdl",
+                "",
+                $"test: {name}_tb",
+                $"\tcp \"{CSVTracename}\" .",
+                $"\tghdl -r --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) {name}_tb --vcd=$(VCDFILE)",
+                "",
+                "clean:",
+                $"\trm -rf $(WORKDIR) *.o {name}_tb",
+                "",
+                "",
+                $".PHONY: all clean test export build{cust_tag}",
+                ""
+            );
+
+            return decl;
+        }
+
+        public string GenerateCustomTypes(RenderState state)
+        {
+            var decl = RenderLines(state,
+                "library IEEE;",
+                "use IEEE.STD_LOGIC_1164.ALL;",
+                "use IEEE.NUMERIC_STD.ALL;",
+                "",                "",
+                "-- User defined packages here",
+                "-- #### USER-DATA-IMPORTS-START",
+                "-- #### USER-DATA-IMPORTS-END",
+                "",
+                "package CUSTOM_TYPES is",
+                "",
+                "-- User defined types here",
+                "-- #### USER-DATA-CORETYPES-START",
+                "-- #### USER-DATA-CORETYPES-END",
+                ""
+            );
+
+            using(state.Indenter())
+            {
+                var consts = ValidationState.AllInstances
+                    .OfType<Instance.ConstantReference>()
+                    .Select(x => x.Source)
+                    .Distinct();
+
+                if (consts.Any())
+                {
+                    decl += RenderLines(state,
+                        "-- Constant definitions",
+                        ""
+                    );
+
+                    decl += RenderLines(state,
+                        consts.Select(c => 
+                            $"constant {c.Name}: {c.DataType} := {c.Expression};"
+                        )
+                    );
+                }
+
+                // var enums = ValidationState.AllInstances
+                //     .OfType<Instance.Variable>()
+                //     .Select(x => x.Source)
+                //     .Select(x => x.Type.IntrinsicType)
+                //     .Where(x => x != null)
+                //     .Select(x => x.IsEnum)
+                //     .Distinct();
+
+                // if (enums.Any())
+                // {
+                //     decl += RenderLines(state,
+                //         "-- Enum definitions",
+                //         ""
+                //     );
+
+                //     decl += RenderLines(state,
+                //         enums.Select(c =>
+                //             $"type {c.Name} is {string.Join(", ", c.Values)};"
+                //         )
+                //     );
+
+                // }
+                
+
+            }
+
+            decl += RenderLines(state,
+                "-- User defined types here",
+                "-- #### USER-DATA-TRAILTYPES-START",
+                "-- #### USER-DATA-TRAILTYPES-END",
+                "",
+                "end CUSTOM_TYPES;",
+                ""
+            );
+
+            return decl;
+        }
+
+        /// <summary>
+        /// Creates a testbench for testing the generated code with GHDL
+        /// </summary>
+        /// <param name="state">The render state</param>
+        /// <returns>The generated testbench</returns>
+        public string GenerateTestbench(RenderState state)
+        {
+            var decl = GenerateVHDLFilePreamble(state);
+            var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
+            var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+
+            decl += RenderLines(state,
+                "use work.csv_util.all;",
+                "use STD.TEXTIO.all;",
+                "use IEEE.STD_LOGIC_TEXTIO.all;",            
+                "",
+                "--User defined packages here",
+                "-- #### USER-DATA-IMPORTS-START",
+                "-- #### USER-DATA-IMPORTS-END",
+                "",
+                $"entity {name}_tb is",
+                "end;",
+                "",
+                $"architecture TestBench of {name}_tb is"
+            );
+
+            using(state.Indenter())
+            {
+                decl += RenderLines(state,
+                    "",
+                    "signal CLOCK : Std_logic;",
+                    "signal StopClock : BOOLEAN;",
+                    "signal RESET : Std_logic;",
+                    "signal ENABLE : Std_logic;",
+                    ""
+                );
+
+                foreach (var bus in AllBusses)
+                {
+                    decl += RenderLines(state,
+                        $"-- Shared bus {BusNames[bus]} signals"
+                    );
+
+                    decl +=
+                        RenderLines(state,
+                            bus
+                                .Instances
+                                .OfType<Instance.Signal>()
+                                .Select(x => $"signal {RenderSignalName(BusNames[bus], x.Name)}: {RenderNativeType(x.ResolvedType)};")
+                    );
+
+                    decl += Environment.NewLine;
+                }
+            }
+
+            decl += RenderLines(state,
+                "",
+                "begin",                
+                ""
+            );
+
+            using(state.Indenter())
+            {
+                decl += RenderLines(state,
+                    $"uut: entity work.main_{name}",
+                    "port map ("
+                );
+
+                var exportsmap = ValidationState.TopLevel.InputBusses.Union(
+                    ValidationState.TopLevel.OutputBusses)
+                    .ToHashSet();
+
+                var inputsmap = ValidationState.TopLevel.InputBusses.ToHashSet();
+
+                using(state.Indenter())
+                {
+                    foreach (var bus in AllBusses)
+                    {
+                        decl += RenderLines(state,
+                            $"-- {(exportsmap.Contains(bus) ? "External" : "Internal")} bus {BusNames[bus]} signals"
+                        );
+
+                        decl += RenderLines(state,
+                            bus
+                                .Instances
+                                .OfType<Instance.Signal>()
+                                .Select(x => $"{(exportsmap.Contains(bus) ? "" : "tb_")}{RenderSignalName(BusNames[bus], x.Name)} => {RenderSignalName(BusNames[bus], x.Name)},")
+                        );
+
+                        decl += Environment.NewLine;
+                    }
+
+                    decl += RenderLines(state,
+                        " -- Control signals",
+                        "ENB => ENABLE,",
+                        "RST => RESET,",
+                        "CLK => CLOCK"
+                    );
+
+                }
+
+                decl += RenderLines(state,
+                    ");",
+                    "",
+                    "Clk: process",
+                    "begin",
+                    "    while not StopClock loop",
+                    "        CLOCK <= '1';",
+                    "        wait for 5 NS;",
+                    "        CLOCK <= '0';",
+                    "        wait for 5 NS;",
+                    "    end loop;",
+                    "    wait;",
+                    "end process;",
+                    "",
+                    "TraceFileTester: process",
+                    ""
+                );
+
+                using(state.Indenter())
+                {
+                    decl += RenderLines(state,
+                        "file F: TEXT;",
+                        "variable L: LINE;",
+                        "variable Status: FILE_OPEN_STATUS;",
+                        "constant filename : string := \"./trace.csv\";",
+                        "variable clockcycle : integer:= 0;",
+                        "variable tmp : CSV_LINE_T;",
+                        "variable readOK : boolean;",
+                        "variable fieldno : integer:= 0;",
+                        "variable failures : integer:= 0;",
+                        "variable newfailures: integer:= 0;",
+                        "variable first_failure_tick : integer:= -1;",
+                        "variable first_round : boolean:= true;"
+                    );
+                }
+
+                decl += RenderLines(state,
+                    "",
+                    "begin",
+                    ""
+                );
+
+                using (state.Indenter())
+                {
+                    decl += RenderLines(state,
+                        "-- #### USER-DATA-CONDITONING-START",
+                        "-- #### USER-DATA-CONDITONING-END",
+                        "",
+                        "FILE_OPEN(Status, F, filename, READ_MODE);",
+                        "if Status /= OPEN_OK then",
+                        "    report \"Failed to open CSV trace file\" severity Failure;",
+                        "else"
+                    );
+
+                    using (state.Indenter())
+                    {
+                        decl += RenderLines(state,
+                            "-- Verify the headers",
+                            "READLINE(F, L);",
+                            "",
+                            "fieldno := 0;"
+                        );
+
+                        decl += RenderLines(state,
+                            AllBusses
+                                .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                                .SelectMany(x => new [] {
+                                    "read_csv_field(L, tmp);",
+                                    $"assert are_strings_equal(tmp, \"{x.ParentBus.Name}.{x.Name}\") report \"Field #\" & integer'image(fieldno) & \" is not correctly named: \" & truncate(tmp) & \", expected {x.ParentBus.Name}.{x.Name}\" severity Failure;",
+                                    "fieldno := fieldno + 1;"
+                                })
+                        );
+
+                        decl += RenderLines(state,
+                            "",
+                            "-- Reset the system before testing",
+                            "RESET <= '1';",
+                            "ENABLE <= '0';",
+                            "wait for 5 NS;",
+                            "RESET <= '0';",
+                            "ENABLE <= '1';",
+                            "",
+                            "-- Read a line each clock",
+                            "while not ENDFILE(F) loop"
+                        );
+
+                        using (state.Indenter())
+                        {
+                            decl += RenderLines(state,
+                                "READLINE(F, L);",
+                                "",
+                                "fieldno := 0;",
+                                "newfailures := 0;",
+                                "",
+                                "-- Write all driver signals out on the clock edge,",
+                                "-- except on the first round, where we make sure the reset",
+                                "-- values are propagated _before_ the initial clock edge",
+                                "if not first_round then",
+                                "    wait until rising_edge(CLOCK);",
+                                "end if;",
+                                "" 
+                            );
+
+                            decl += RenderLines(state,
+                                    AllBusses
+                                    .Where(x => inputsmap.Contains(x))
+                                    .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                                    .SelectMany(x => new string[] {
+                                        "read_csv_field(L, tmp);",
+                                        "if are_strings_equal(tmp, \"U\") then",
+                                        $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)} <= {(x.ResolvedType.IsBoolean ? "'U'" : "(others => 'U')")};",
+                                        "else",
+                                        $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)} <= {(x.ResolvedType.IsBoolean ? "to_std_logic(truncate(tmp))" : FromStdLogicVectorConvertFunction(x.ResolvedType, "to_std_logic_vector(truncate(tmp))"))};",
+                                        "end if;",
+                                        "fieldno := fieldno + 1;"
+                                    })
+                            );
+
+                            decl += RenderLines(state,
+                                "",
+                                "-- First round is special",
+                                "if first_round then",
+                                "    wait until rising_edge(CLOCK);",
+                                "    first_round := false;",
+                                "end if;",
+                                "",
+                                "-- Wait until the signals are settled before veriying the results",
+                                "wait until falling_edge(CLOCK);",
+                                "",
+                                "-- Compare each signal with the value in the CSV file"
+                            );
+
+                            decl += RenderLines(state,
+                                AllBusses
+                                    .Where(x => !inputsmap.Contains(x))
+                                    .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                                    .SelectMany(x => new string[] {
+                                        $"read_csv_field(L, tmp);",
+                                        $"if not are_strings_equal(tmp, \"U\") then",
+                                        $"    if not are_strings_equal(str({RenderSignalName(BusNames[x.ParentBus], x.Name)}), tmp) then",
+                                        $"        newfailures := newfailures + 1;",
+                                        $"        report \"Value for {RenderSignalName(BusNames[x.ParentBus], x.Name)} in cycle \" & integer'image(clockcycle) & \" was: \" & str({RenderSignalName(BusNames[x.ParentBus], x.Name)}) & \" but should have been: \" & truncate(tmp) severity Error;",
+                                        $"    end if;",
+                                        $"end if;",
+                                        $"fieldno := fieldno + 1;"
+                                    })
+                            );
+
+                            decl += RenderLines(state,
+                                "failures := failures + newfailures;",
+                                "if newfailures = 0 then",
+                                "    first_failure_tick := -1;",
+                                "elsif first_failure_tick = -1 then",
+                                "    first_failure_tick := clockcycle;",
+                                "else",
+                                "    if clockcycle - first_failure_tick >= 5 then",
+                                "        report \"Stopping simulation due to five consecutive failed cycles\" severity error;",
+                                "        StopClock <= true;",
+                                "    elsif failures > 20 then",
+                                "        report \"Stopping simulation after 20 failures\" severity error;",
+                                "        StopClock <= true;",
+                                "    end if;",
+                                "end if;",
+                                "",
+                                "clockcycle := clockcycle + 1;"
+                            );
+                        }
+
+                    }
+
+                    decl += RenderLines(state,
+                        "end loop;",
+                        "",
+                        "FILE_CLOSE(F);"
+                    );
+                }
+
+                decl += RenderLines(state,
+                    "end if;",
+                    "",
+                    "if failures = 0 then",
+                    "    report \"completed successfully after \" & integer'image(clockcycle) & \" clockcycles\";",
+                    "else",
+                    "    report \"completed with \" & integer'image(failures) & \" error(s) after \" & integer'image(clockcycle) & \" clockcycle(s)\";",
+                    "end if;",
+                    "StopClock <= true;",
+                    "",
+                    "wait;"
+                );
+            }
+
+            decl += RenderLines(state,
+                "end process;",
+                "end architecture TestBench;"
+            );
+
+            return decl;
+        }
+
+
+        /// <summary>
+        /// Returns a conversion for the input string
+        /// Assumes the lengths match
+        /// </summary>
+        /// <param name="resolvedType">The type to convert to</param>
+        /// <param name="input">The string to convert</param>
+        /// <returns>A conversion string</returns>
+        private string FromStdLogicVectorConvertFunction(DataType resolvedType, string input)
+        {
+            if (resolvedType.Type == ILType.SignedInteger && resolvedType.BitWidth != -1)
+                return $"signed({input})";
+            else if (resolvedType.Type == ILType.UnsignedInteger && resolvedType.BitWidth != -1)
+                return $"unsigned({input})";
+            else if (resolvedType.Type == ILType.SignedInteger && resolvedType.BitWidth == -1)
+                return $"to_integer(signed({input}))";
+
+            throw new Exception($"Unable to convert a std_logic_vector type to {resolvedType}");
+        }
+
+        /// <summary>
+        /// Creates a Xilinx Vivado .xpf for testing the generated code with GHDL
+        /// </summary>
+        /// <param name="state">The render state</param>
+        /// <param name="filenames">The filenames assigned to the processes</param>
+        /// <returns>The generated xpf file</returns>
+        public string GenerateXpf(RenderState state, Dictionary<Instance.Process, string> filenames)
+        {
+            var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
+            var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+            
+            var decl = RenderLines(state, 
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+                $"<Project Version=\"7\" Minor=\"35\" Path=\"./{name}.xpr\">",
+                "  <DefaultLaunch Dir=\"$PRUNDIR\"/>",
+                "  <Configuration>",
+                "    <Option Name=\"Id\" Val=\"da04b7443593460ab7943c9e399803cf\"/>",
+                "    <Option Name=\"Part\" Val=\"xc7z020clg484-1\"/>",
+                "    <Option Name=\"CompiledLibDir\" Val=\"$PCACHEDIR/compile_simlib\"/>",
+                "    <Option Name=\"CompiledLibDirXSim\" Val=\"\"/>",
+                "    <Option Name=\"CompiledLibDirModelSim\" Val=\"$PCACHEDIR/compile_simlib/modelsim\"/>",
+                "    <Option Name=\"CompiledLibDirQuesta\" Val=\"$PCACHEDIR/compile_simlib/questa\"/>",
+                "    <Option Name=\"CompiledLibDirIES\" Val=\"$PCACHEDIR/compile_simlib/ies\"/>",
+                "    <Option Name=\"CompiledLibDirXcelium\" Val=\"$PCACHEDIR/compile_simlib/xcelium\"/>",
+                "    <Option Name=\"CompiledLibDirVCS\" Val=\"$PCACHEDIR/compile_simlib/vcs\"/>",
+                "    <Option Name=\"CompiledLibDirRiviera\" Val=\"$PCACHEDIR/compile_simlib/riviera\"/>",
+                "    <Option Name=\"CompiledLibDirActivehdl\" Val=\"$PCACHEDIR/compile_simlib/activehdl\"/>",
+                "    <Option Name=\"TargetLanguage\" Val=\"VHDL\"/>",
+                "    <Option Name=\"SimulatorLanguage\" Val=\"VHDL\"/>",
+                "    <Option Name=\"BoardPart\" Val=\"em.avnet.com:zed:part0:1.3\"/>",
+                "    <Option Name=\"ActiveSimSet\" Val=\"sim_1\"/>",
+                "    <Option Name=\"DefaultLib\" Val=\"xil_defaultlib\"/>",
+                "    <Option Name=\"ProjectType\" Val=\"Default\"/>",
+                "    <Option Name=\"IPOutputRepo\" Val=\"$PCACHEDIR/ip\"/>",
+                "    <Option Name=\"IPCachePermission\" Val=\"read\"/>",
+                "    <Option Name=\"IPCachePermission\" Val=\"write\"/>",
+                "    <Option Name=\"EnableCoreContainer\" Val=\"FALSE\"/>",
+                "    <Option Name=\"CreateRefXciForCoreContainers\" Val=\"FALSE\"/>",
+                "    <Option Name=\"IPUserFilesDir\" Val=\"$PIPUSERFILESDIR\"/>",
+                "    <Option Name=\"IPStaticSourceDir\" Val=\"$PIPUSERFILESDIR/ipstatic\"/>",
+                "    <Option Name=\"EnableBDX\" Val=\"FALSE\"/>",
+                "    <Option Name=\"DSAVendor\" Val=\"xilinx\"/>",
+                "    <Option Name=\"DSABoardId\" Val=\"zed\"/>",
+                "    <Option Name=\"DSANumComputeUnits\" Val=\"16\"/>",
+                "    <Option Name=\"WTXSimLaunchSim\" Val=\"84\"/>",
+                "    <Option Name=\"WTModelSimLaunchSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTQuestaLaunchSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTIesLaunchSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTVcsLaunchSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTRivieraLaunchSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTActivehdlLaunchSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTXSimExportSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTModelSimExportSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTQuestaExportSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTIesExportSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTVcsExportSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTRivieraExportSim\" Val=\"0\"/>",
+                "    <Option Name=\"WTActivehdlExportSim\" Val=\"0\"/>",
+                "    <Option Name=\"GenerateIPUpgradeLog\" Val=\"TRUE\"/>",
+                "    <Option Name=\"XSimRadix\" Val=\"hex\"/>",
+                "    <Option Name=\"XSimTimeUnit\" Val=\"ns\"/>",
+                "    <Option Name=\"XSimArrayDisplayLimit\" Val=\"1024\"/>",
+                "    <Option Name=\"XSimTraceLimit\" Val=\"65536\"/>",
+                "    <Option Name=\"SimTypes\" Val=\"rtl\"/>",
+                "  </Configuration>",
+                "  <FileSets Version=\"1\" Minor=\"31\">",
+                "    <FileSet Name=\"sources_1\" Type=\"DesignSrcs\" RelSrcDir=\"$PSRCDIR/sources_1\">",
+                "      <Filter Type=\"Srcs\"/>",
+                "      <File Path=\"$PPRDIR/system_types.vhdl\">",
+                "        <FileInfo>",
+                "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
+                "          <Attr Name=\"IsGlobalInclude\" Val=\"1\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"simulation\"/>",
+                "        </FileInfo>",
+                "      </File>",
+                $"      <File Path=\"$PPRDIR/Types_{name} #>\">",
+                "        <FileInfo>",
+                "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
+                "          <Attr Name=\"IsGlobalInclude\" Val=\"1\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"simulation\"/>",
+                "        </FileInfo>",
+                "      </File>"
+            );
+
+            foreach (var file in filenames.Values)
+            {
+                decl += RenderLines(state,
+                    $"      <File Path=\"$PPRDIR/{file}.vhdl\">",
+                    "        <FileInfo>",
+                    "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
+                    "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
+                    "          <Attr Name=\"UsedIn\" Val=\"simulation\"/>",
+                    "        </FileInfo>",
+                    "      </File>"
+                );
+            }
+
+            decl += RenderLines(state,
+                $"      <File Path=\"$PPRDIR/{name}.vhdl\">",
+                "        <FileInfo>",
+                "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"simulation\"/>",
+                "        </FileInfo>",
+                "      </File>",
+                "      <Config>",
+                "        <Option Name=\"DesignMode\" Val=\"RTL\"/>",
+                $"        <Option Name=\"TopModule\" Val=\"{name}\"/>",
+                "        <Option Name=\"TopAutoSet\" Val=\"TRUE\"/>",
+                "      </Config>",
+                "    </FileSet>",
+                "    <FileSet Name=\"constrs_1\" Type=\"Constrs\" RelSrcDir=\"$PSRCDIR/constrs_1\">",
+                "      <Filter Type=\"Constrs\"/>",
+                "      <Config>",
+                "        <Option Name=\"ConstrsType\" Val=\"XDC\"/>",
+                "      </Config>",
+                "    </FileSet>",
+                "    <FileSet Name=\"sim_1\" Type=\"SimulationSrcs\" RelSrcDir=\"$PSRCDIR/sim_1\">",
+                "      <Filter Type=\"Srcs\"/>",
+                "      <File Path=\"$PPRDIR/csv_util.vhdl\">",
+                "        <FileInfo>",
+                "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"simulation\"/>",
+                "        </FileInfo>",
+                "      </File>",
+                $"      <File Path=\"$PPRDIR/TestBench_{name}.vhdl\">",
+                "        <FileInfo>",
+                "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
+                "          <Attr Name=\"UsedIn\" Val=\"simulation\"/>",
+                "        </FileInfo>",
+                "      </File>",
+                $"      <File Path=\"$PPRDIR/{CSVTracename}\">",
+                "          <Attr Name=\"UsedIn\" Val=\"simulation\"/>",
+                "      </File>",
+                "      <Config>",
+                "        <Option Name=\"DesignMode\" Val=\"RTL\"/>",
+                $"        <Option Name=\"TopModule\" Val=\"{name}_tb\"/>",
+                "        <Option Name=\"TopLib\" Val=\"xil_defaultlib\"/>",
+                "        <Option Name=\"TransportPathDelay\" Val=\"0\"/>",
+                "        <Option Name=\"TransportIntDelay\" Val=\"0\"/>",
+                "        <Option Name=\"SrcSet\" Val=\"sources_1\"/>",
+                $"        <Option Name=\"xsim.simulate.runtime\" Val=\"{((Ticks + 2) * 10) + "ns"}\"/>",
+                "      </Config>",
+                "    </FileSet>",
+                "  </FileSets>",
+                "  <Simulators>",
+                "    <Simulator Name=\"XSim\">",
+                "      <Option Name=\"Description\" Val=\"Vivado Simulator\"/>",
+                "      <Option Name=\"CompiledLib\" Val=\"0\"/>",
+                "    </Simulator>",
+                "    <Simulator Name=\"ModelSim\">",
+                "      <Option Name=\"Description\" Val=\"ModelSim Simulator\"/>",
+                "    </Simulator>",
+                "    <Simulator Name=\"Questa\">",
+                "      <Option Name=\"Description\" Val=\"Questa Advanced Simulator\"/>",
+                "    </Simulator>",
+                "    <Simulator Name=\"Riviera\">",
+                "      <Option Name=\"Description\" Val=\"Riviera-PRO Simulator\"/>",
+                "    </Simulator>",
+                "    <Simulator Name=\"ActiveHDL\">",
+                "      <Option Name=\"Description\" Val=\"Active-HDL Simulator\"/>",
+                "    </Simulator>",
+                "  </Simulators>",
+                "  <Runs Version=\"1\" Minor=\"10\">",
+                "    <Run Id=\"synth_1\" Type=\"Ft3:Synth\" SrcSet=\"sources_1\" Part=\"xc7z020clg484-1\" ConstrsSet=\"constrs_1\" Description=\"Vivado Synthesis Defaults\" WriteIncrSynthDcp=\"false\" State=\"current\" IncludeInArchive=\"true\">",
+                "      <Strategy Version=\"1\" Minor=\"2\">",
+                "        <StratHandle Name=\"Vivado Synthesis Defaults\" Flow=\"Vivado Synthesis 2017\"/>",
+                "        <Step Id=\"synth_design\"/>",
+                "      </Strategy>",
+                "      <ReportStrategy Name=\"Vivado Synthesis Default Reports\" Flow=\"Vivado Synthesis 2017\"/>",
+                "      <Report Name=\"ROUTE_DESIGN.REPORT_METHODOLOGY\" Enabled=\"1\"/>",
+                "    </Run>",
+                "    <Run Id=\"impl_1\" Type=\"Ft2:EntireDesign\" Part=\"xc7z020clg484-1\" ConstrsSet=\"constrs_1\" Description=\"Default settings for Implementation.\" WriteIncrSynthDcp=\"false\" State=\"current\" SynthRun=\"synth_1\" IncludeInArchive=\"true\">",
+                "      <Strategy Version=\"1\" Minor=\"2\">",
+                "        <StratHandle Name=\"Vivado Implementation Defaults\" Flow=\"Vivado Implementation 2017\"/>",
+                "        <Step Id=\"init_design\"/>",
+                "        <Step Id=\"opt_design\"/>",
+                "        <Step Id=\"power_opt_design\"/>",
+                "        <Step Id=\"place_design\"/>",
+                "        <Step Id=\"post_place_power_opt_design\"/>",
+                "        <Step Id=\"phys_opt_design\"/>",
+                "        <Step Id=\"route_design\"/>",
+                "        <Step Id=\"post_route_phys_opt_design\"/>",
+                "        <Step Id=\"write_bitstream\"/>",
+                "      </Strategy>",
+                "      <ReportStrategy Name=\"Vivado Implementation Default Reports\" Flow=\"Vivado Implementation 2017\"/>",
+                "      <Report Name=\"ROUTE_DESIGN.REPORT_METHODOLOGY\" Enabled=\"1\"/>",
+                "    </Run>",
+                "  </Runs>",
+                "  <Board>",
+                "    <Jumpers/>",
+                "  </Board>",
+                "</Project>"
+            );
+
+            return decl;
+        }
+
         /// <summary>
         /// Returns a VHDL representation of a network
         /// </summary>
         /// <param name="state">The render stater</param>
-        /// <param name="network">The network to render</param>
         /// <returns>The document representing the rendered network</returns>
-        public string GenerateNetwork(RenderState state, Instance.Network network)
+        public string GenerateExportModule(RenderState state)
         {
-            using (state.StartScope(network))
+            var toplevelbusses = ValidationState.TopLevel.InputBusses
+                .Concat(ValidationState.TopLevel.OutputBusses)
+                .Distinct()
+                .ToArray();
+
+            // We only want std_logic(_vector) external signals
+            // because the tools sometimes trip on other types
+            var typeconvertedbusses =
+                toplevelbusses
+                .Where(x => x.ResolvedSignalTypes.Values.Any(y => y.IsNumeric))
+                .ToArray();
+
+            var exportnames = new Dictionary<Instance.Bus, string>(BusNames);
+
+            // We could avoid this module by using either init_signal_spy() or VHDL alias (in VHDL 2008)
+            // But... GHDL does not currently support either, so this elaborate workaround is all we can do
+            using (state.StartScope(ValidationState.TopLevel.NetworkInstance))
             {
-                var ndef = network.NetworkDefinition;
-                var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, network.Name));
-                var decl = RenderLines(state, $"entity {name} is");
+                var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
+                var mainname = SanitizeVHDLName(RenderIdentifier(state, "main_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+                var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+                var decl = GenerateVHDLFilePreamble(state);
+                decl += RenderLines(state, $"entity {name} is");
+                using (state.Indenter())
+                {
+                    decl += RenderLines(state, $"port(");
+                    using (state.Indenter())
+                    {
+                        foreach (var b in toplevelbusses)
+                            decl += RenderTopLevelBus(state, b, true);
+
+                        decl += RenderLines(state,
+                            "-- User defined signals here",
+                            "-- #### USER-DATA-ENTITYSIGNALS-START",
+                            "-- #### USER-DATA-ENTITYSIGNALS-END",
+                            "",
+                            "-- Enable signal",
+                            "ENB: in STD_LOGIC;",
+                            "",
+                            "--Reset signal",
+                            "RST : in STD_LOGIC;",
+                            "",
+                            "--Finished signal",
+                            "FIN : out STD_LOGIC;",
+                            "",
+                            "--Clock signal",
+                            "CLK : in STD_LOGIC"
+                        );
+                    }
+
+                    decl += RenderLines(state, ");");
+                }
+
+                decl += RenderLines(state,
+                    $"end {name};",
+                    $"",
+                    $"architecture RTL of {name} is"
+                );
+
+                using (state.Indenter())                
+                {
+                    decl += RenderLines(state,
+                        "-- User defined signals here",
+                        "-- #### USER-DATA-SIGNALS-START",
+                        "-- #### USER-DATA-SIGNALS-END"
+                    );
+
+                    // For signals that require type casts, prefix the internal signals with 'ext'
+                    // and register a local signal to carry the un-converted value
+                    foreach (var n in typeconvertedbusses)
+                        decl += RenderBusSignals(state, n, exportnames[n] = "ext_" + exportnames[n]);
+
+                    decl += RenderLines(state, "");
+                }
+
+                decl += RenderLines(state, "begin");
+
+                using(state.Indenter())
+                {
+                    decl += RenderLines(state, "-- Write out any converted signals with the correct type");
+
+                    // Forward type converted input/output signals
+                    foreach (var bus in typeconvertedbusses)
+                        decl += RenderLines(state,
+                            bus.Instances
+                            .OfType<Instance.Signal>()
+                            .Select(x =>
+                            {
+                                return ValidationState.TopLevel.InputBusses.Contains(x.ParentBus)
+                                    ? $"{RenderSignalName(exportnames[bus], x.Name)} <= {(x.ResolvedType.Type == ILType.SignedInteger ? "SIGNED" : "UNSIGNED")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)});"
+                                    : $"{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)} <= STD_LOGIC_VECTOR({RenderSignalName(exportnames[bus], x.Name)});";
+                            })
+                        );
+
+                    decl += RenderLines(state, 
+                        "",
+                        "-- Wire up the main instance",
+                        $"{name}: entity work.{mainname}",
+                        "port map ("
+                    );
+
+                    using(state.Indenter())
+                    {
+                        foreach (var bus in toplevelbusses)
+                            decl += RenderLines(state,
+                                bus.Instances.OfType<Instance.Signal>()
+                                .Select(x => $"{RenderSignalName(BusNames[bus], x.Name)} => {RenderSignalName(exportnames[bus], x.Name)}")
+                            );
+
+                        decl += RenderLines(state,
+                            "ENB => ENB",
+                            "RST => RST",
+                            "FIN => FIN",
+                            "CLK => CLK"
+                        );
+                    }
+
+                    decl += RenderLines(state,
+                        ");"
+                    );
+
+                    decl += RenderLines(state,
+                        "",
+                        "-- User defined processes here",
+                        "-- #### USER-DATA-CODE-START",
+                        "-- #### USER-DATA-CODE-END"
+                    );
+                }
+
+                decl += RenderLines(state, "end RTL");
+                return decl;
+            }
+        }
+
+
+        /// <summary>
+        /// Returns a VHDL representation of a network
+        /// </summary>
+        /// <param name="state">The render stater</param>
+        /// <returns>The document representing the rendered network</returns>
+        public string GenerateMainModule(RenderState state)
+        {
+            using (state.StartScope(ValidationState.TopLevel.NetworkInstance))
+            {
+                var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
+                var name = SanitizeVHDLName(RenderIdentifier(state, "main_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+                var decl = GenerateVHDLFilePreamble(state); 
+                decl += RenderLines(state, $"entity {name} is");
+
+                var internalbusses = AllBusses
+                    .Where(x =>
+                        !ValidationState.TopLevel.InputBusses.Contains(x)
+                        &&
+                        !ValidationState.TopLevel.OutputBusses.Contains(x)
+                    ).ToArray();
 
                 using (state.Indenter())
                 {
                     decl += RenderLines(state, $"port(");
                     using(state.Indenter())
                     {
-                        // TODO: TopLevel busses, how?
+                        foreach (var item in ValidationState.TopLevel.InputBusses.Concat(ValidationState.TopLevel.OutputBusses).Distinct())
+                            decl += RenderTopLevelBus(state, item);
+
+                        if (internalbusses.Any())
+                        {
+                            decl += RenderLines(state, 
+                                "-- The signals prefixed with tb_ are testbench monitor signals.",
+                                "-- They are not connected in the exported design, and are thus optimized away.",
+                                "-- If either init_signal_spy or VHDL aliases start working in both Vivado AND GHDL",
+                                "-- we can avoid these signals, and the resulting top-level module"
+                            );
+
+                            foreach (var item in internalbusses)
+                                decl += RenderTopLevelBus(state, item);
+                        }
 
                         decl += RenderLines(state,
-                            "",
-                            "--User defined signals here",
+                            "-- User defined signals here",
                             "-- #### USER-DATA-ENTITYSIGNALS-START",
                             "-- #### USER-DATA-ENTITYSIGNALS-END",
                             "",
                             "-- Enable signal",
-                            "ENB: in Std_logic;",
+                            "ENB: in STD_LOGIC;",
                             "",
                             "--Finished signal",
-                            "FIN : out Std_logic;",
+                            "FIN : out STD_LOGIC;",
                             "",
                             "--Reset signal",
-                            "RST : in Std_logic;",
+                            "RST : in STD_LOGIC;",
                             "",
                             "--Clock signal",
-                            "CLK : in Std_logic"
+                            "CLK : in STD_LOGIC"
                         );
                     }
 
@@ -247,18 +1200,35 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                 using (state.Indenter())
                 {
+                    foreach (var b in internalbusses)
+                        decl += RenderBusSignals(state, b, BusNames[b]);
+
                     decl += RenderLines(state, 
-                        "--User defined signals here",
+                        "",
+                        "-- User defined signals here",
                         "-- #### USER-DATA-SIGNALS-START",
                         "-- #### USER-DATA-SIGNALS-END",
-                        ""
+                        "",
+                        "-- Trigger signals"
                     );
 
-                    // TODO: Triggers and feedback signals
+                    decl += RenderLines(state,
+                        ValidationState
+                        .AllInstances
+                        .OfType<Instance.Process>()
+                        .SelectMany(proc => new string[] {
+                            $"signal {RenderIdentifier(state, "RDY_", proc.DeclarationSource.Name.Name, null)}: STD_LOGIC;",
+                            $"signal {RenderIdentifier(state, "FIN_", proc.DeclarationSource.Name.Name, null)}: STD_LOGIC;",
+                        })
+                    );
 
                     decl += RenderLines(state,
-                        "--The primary ready driver signal",
-                        "signal RDY: std_logic;",
+                        "",
+                        "-- The primary ready driver signal",
+                        "signal RDY: STD_LOGIC;",
+                        "",
+                        "-- Ready flag flip signal",
+                        "signal readyflag: STD_LOGIC;",
                         ""
                     );
                 }
@@ -267,18 +1237,71 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                 using(state.Indenter())
                 {
-                    // foreach (var inst in network.Instances.OfType<Instance.Process>())
-                    //     decl += RenderProcessInstantiation(state, inst);
+                    foreach (var inst in ValidationState.AllInstances.OfType<Instance.Process>())
+                        decl += RenderProcessInstantiation(state, inst);
 
+                    decl += RenderLines(state, 
+                        "-- Connect RDY signals"
+                    );
 
-                    decl += RenderLines(state, "--Connect ready signals");
-
-                    decl += RenderLines(state, "--Setup the FIN feedback signals");
-                        
                     decl += RenderLines(state,
-                        "--Propagate all clocked and feedback signals",
+                        ValidationState.DependencyGraph.Select(
+                            x => {
+                                var depends = x.Value;
+                                var selfsignal = RenderIdentifier(state, "RDY_", x.Key.DeclarationSource.Name.Name, null);
+                                if (depends.Length == 0)
+                                    return $"{selfsignal} <= RDY;";
+
+                                var depsignals = 
+                                    string.Join(
+                                        " and ", 
+                                        x.Value
+                                            .Select(
+                                                y => RenderIdentifier(state, "FIN_", y.DeclarationSource.Name.Name, null)
+                                            )
+                                    );
+
+                                return
+                                    $"{selfsignal} <= {depsignals};";
+                            }
+                        )
+                    );
+
+                    decl += RenderLines(state,
+                        "",
+                        "-- Connect FIN signals"
+                    );
+
+                    // The trail-level signals contribute to the final FIN
+                    // We could do reverse lookup in the DependencyGraph, 
+                    // but lookup via the schedule is easier
+                    var finsignals =
+                        string.Join(
+                            " and ",
+                            ValidationState.SuggestedSchedule
+                                .Last()
+                                .Select(
+                                    y => RenderIdentifier(state, "FIN_", y.DeclarationSource.Name.Name, null)
+                                )
+                        );
+
+
+                    decl += RenderLines(state,
+                        $"FIN <= {finsignals};",
+                        ""
+                    );
+
+                    decl += RenderLines(state, "-- Wire up all testbench monitor signals");
+                    foreach (var bus in internalbusses)
+                        decl += RenderLines(state, 
+                            bus.Instances.OfType<Instance.Signal>()
+                                .Select(x => $"tb_{RenderSignalName(BusNames[bus], x.Name)} <= {RenderSignalName(BusNames[bus], x.Name)};")
+                        );
+
+                    decl += RenderLines(state,
+                        "",
+                        "-- Propagate all clocked and feedback signals",
                         "process(CLK, RST)",
-                        "    signal readyflag: STD_LOGIC;",
                         "begin",
                         "    if RST = '1' then",
                         "        RDY <= '0';",
@@ -287,31 +1310,15 @@ namespace SMEIL.Parser.Codegen.VHDL
                         "        if ENB = '1' then",
                         "            RDY <= not readyflag;",
                         "            readyflag <= not readyflag;",
-                        "            --Forward feedback signals"
-                    );
-
-                    // Tripple indent the feedback signals
-                    using(state.Indenter())
-                    using (state.Indenter())
-                    using (state.Indenter())
-                    {
-
-                    }
-
-                    decl += RenderLines(state,
-                        "",
                         "        end if;",
                         "    end if;",
                         "end process;",
                         ""
                     );
 
-
-                    decl += RenderLines(state, "-- Send feedback outputs to the actual output");
-
                     decl += RenderLines(state,
                         "",
-                        "--User defined processes here",
+                        "-- User defined processes here",
                         "-- #### USER-DATA-CODE-START",
                         "-- #### USER-DATA-CODE-END",
                         ""
@@ -325,6 +1332,158 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
+        /// Renders the instantiation of a process
+        /// </summary>
+        /// <param name="state">The render state</param>
+        /// <param name="proc">The instance to render</param>
+        /// <returns>The redered instance</returns>
+        public string RenderProcessInstantiation(RenderState state, Instance.Process proc)
+        {
+            var name = ProcessNames[proc];
+            var decl = RenderLines(state,
+                $"-- Entity {name} from {proc.DeclarationSource.Name.Name}",
+                $"{name}: entity work.{name}",
+                "port map ("
+            );
+
+            using(state.Indenter())
+            {
+                foreach (var busparam in proc.MappedParameters.Where(x => x.MappedItem is Instance.Bus))
+                {
+                    decl += RenderLines(state, 
+                        $"-- {(busparam.MatchedParameter.Direction == AST.ParameterDirection.In ? "Input" : "Output")} bus {busparam.LocalName}"
+                    );
+
+                    var bus = (Instance.Bus)busparam.MappedItem;
+                    var source = busparam.MatchedParameter;
+
+                    decl += RenderLines(state,
+                        bus
+                            .Instances
+                            .OfType<Instance.Signal>()
+                            .Select(x => $"{RenderSignalName(source.Name.Name, x.Name)} => {RenderSignalName(BusNames[bus], x.Name)},")
+                    );
+                }
+
+                foreach (var localbus in proc.Instances.OfType<Instance.Bus>())
+                {
+                    var directions = localbus.Instances
+                        .OfType<Instance.Signal>()
+                        .Where(x => ValidationState.ItemDirection[proc].ContainsKey(x))
+                        .Select(x => ValidationState.ItemDirection[proc][x]);
+
+                    var direction =
+                        directions.Any(x => x == Validation.ItemUsageDirection.Read)
+                        ? Validation.ItemUsageDirection.Read
+                        : Validation.ItemUsageDirection.Write;
+
+                    decl += RenderLines(state,
+                        $"-- Local {(direction == Validation.ItemUsageDirection.Read ? "input" : "output")} bus {localbus.Name}"
+                    );
+
+                    decl += RenderLines(state,
+                        localbus
+                            .Instances
+                            .OfType<Instance.Signal>()
+                            .Select(x => $"{RenderSignalName(localbus.Name, x.Name)} => {RenderSignalName(BusNames[localbus], x.Name)},")
+                    );
+                }                
+
+                decl += RenderLines(state,
+                    $"-- Control signals",
+                    $"CLK => CLK,",
+                    $"RDY => {RenderIdentifier(state, "RDY_", proc.DeclarationSource.Name.Name, null)},",
+                    $"FIN => {RenderIdentifier(state, "FIN_", proc.DeclarationSource.Name.Name, null)},",
+                    $"ENB => ENB,",
+                    $"RST => RST"
+                );
+            }
+
+            decl += RenderLines(state, 
+                ");", 
+                ""
+            );
+
+            return decl;
+        }
+
+        /// <summary>
+        /// Renders the signals for a bus
+        /// </summary>
+        /// <param name="state">The render state</param>
+        /// <param name="bus">The bus to render</param>
+        /// <param name="busname">The name of the bus</param>
+        /// <param name="direction">An optional direction string for the comments</param>
+        /// <returns>The rendered bus definition</returns>
+        public string RenderBusSignals(RenderState state, Instance.Bus bus, string busname, string direction = null)
+        {
+            var decl = RenderLines(
+                state,
+                "",
+                $"-- {(string.IsNullOrWhiteSpace(direction) ? "Bus" : direction + " bus")} {bus.Name} signals"
+            );
+
+            decl +=
+                RenderLines(
+                    state,
+                    bus
+                        .Instances
+                        .OfType<Instance.Signal>()
+                        .Select(x => $"signal {RenderSignalName(busname, x.Name)}: {RenderNativeType(x.ResolvedType)};")
+                );
+
+            return decl;
+        }
+
+
+        /// <summary>
+        /// Renders a top-level bus
+        /// </summary>
+        /// <param name="state">The render state</param>
+        /// <param name="bus">The bus to render</param>
+        /// <param name="useExport">Flag indicating if we should use export types</param>
+        /// <returns>The rendered bus definition</returns>
+        public string RenderTopLevelBus(RenderState state, Instance.Bus bus, bool useExport = false)
+        {
+            var direction = "out";
+            var text = "Top-level output";
+
+            var prefix = string.Empty;
+
+            if (ValidationState.TopLevel.InputBusses.Contains(bus))
+            {
+                direction = "in";
+                text = "Top-level input";
+            }
+            else if (ValidationState.TopLevel.OutputBusses.Contains(bus))
+            {
+                direction = "out";
+                text = "Top-level output";
+            }
+            else
+            {
+                prefix = "tb_";
+                text = "Shared";
+            }
+
+            var decl = RenderLines(
+                state, 
+                $"-- {text} bus {bus.Name} signals"
+            );
+
+            decl += 
+                RenderLines(
+                    state,
+                    bus
+                        .Instances
+                        .OfType<Instance.Signal>()
+                        .Select(x => $"{RenderSignalName(prefix + BusNames[bus], x.Name)}: {direction} {(useExport ? RenderExportType(x.ResolvedType) : RenderNativeType(x.ResolvedType))};")
+                );
+
+            return decl + Environment.NewLine;
+        }
+
+        /// <summary>
         /// Returns a VHDL representation of a process
         /// </summary>
         /// <param name="state">The render stater</param>
@@ -335,7 +1494,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             using(state.StartScope(process))
             {
                 var pdef = process.ProcessDefinition;
-                var name = SanitizeVHDLName(RenderIdentifier(state, pdef.Name, process.Name));
+                var name = ProcessNames[process];
 
                 var decl = RenderLines(state, $"entity {name} is");
                 using(state.Indenter())
@@ -558,7 +1717,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     ""
                 );
 
-                return GenerateFilePreamble(state) + decl + impl;
+                return GenerateVHDLFilePreamble(state) + decl + impl;
             }
         }
 
@@ -1014,7 +2173,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for the identifier</returns>
         public string RenderIdentifier(RenderState state, AST.Identifier identifier)
         {
-            return identifier.Name;
+            return SanitizeVHDLName(identifier.Name);
         }
 
         /// <summary>
@@ -1026,7 +2185,20 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for the identifier</returns>
         public string RenderIdentifier(RenderState state, AST.Identifier identifier, string instancename)
         {
-            return identifier.Name;
+            return SanitizeVHDLName(identifier.Name);
+        }
+
+        /// <summary>
+        /// Renders an identifier
+        /// </summary>
+        /// <param name="state">The state of the render</name>
+        /// <param name="prefix">A prefix to use</param>
+        /// <param name="identifier">The identifier to render</param>
+        /// <param name="instancename">The instancename to use</param>
+        /// <returns>A VHDL fragment for the identifier</returns>
+        public string RenderIdentifier(RenderState state, string prefix, AST.Identifier identifier, string instancename)
+        {
+            return SanitizeVHDLName(prefix + identifier.Name);
         }
 
         /// <summary>
@@ -1083,5 +2255,26 @@ namespace SMEIL.Parser.Codegen.VHDL
 
             throw new Exception($"Unexpected type: {type}");
         }
+
+        /// <summary>
+        /// Emits a VHDL type from a generic SMEIL type
+        /// </summary>
+        /// <param name="type">The SMEIL type to map to VHDL</param>
+        /// <returns>The VHDL type string</returns>
+        public string RenderExportType(DataType type)
+        {
+            if (type.Type == AST.ILType.Bool)
+                return "STD_LOGIC";
+            else if (type.Type == AST.ILType.SignedInteger)
+                return type.BitWidth == -1 ? throw new Exception($"Cannot export a signal of type integer") : $"STD_LOGIC_VECTOR({type.BitWidth - 1} DOWNTO 0)";
+            else if (type.Type == AST.ILType.UnsignedInteger)
+                return type.BitWidth == -1 ? throw new Exception($"Cannot export a signal of type integer") : $"STD_LOGIC_VECTOR({type.BitWidth - 1} DOWNTO 0)";
+            else if (type.Type == AST.ILType.Float)
+                throw new Exception("Float types are not yet supported");
+            else if (type.Type == AST.ILType.Bus)
+                throw new Exception("Cannot declare a bus type");
+
+            throw new Exception($"Unexpected type: {type}");
+        }        
     }
 }
