@@ -122,6 +122,18 @@ namespace SMEIL.Parser.Validation
         public readonly TopLevelEntry TopLevel = new TopLevelEntry();
 
         /// <summary>
+        /// The graph explaining which processes a process depends on
+        /// </summary>
+        public Dictionary<Instance.Process, Instance.Process[]> DependencyGraph;
+
+        /// <summary>
+        /// A sequence of processes, where items in the inner list can
+        /// be scheduled in parallel, and the outer list items have
+        /// interdependencies
+        /// </summary>
+        public List<List<Instance.Process>> SuggestedSchedule;
+
+        /// <summary>
         /// Creates a new validation state shadowing the 
         /// </summary>
         public ValidationState()
@@ -147,6 +159,12 @@ namespace SMEIL.Parser.Validation
                     // Add newly discovered instances
                     if (item is Instance.Network nw)
                         foreach (var n in nw.Instances)
+                            work.Enqueue(n);
+                    if (item is Instance.Process pr)
+                        foreach (var n in pr.Instances)
+                            work.Enqueue(n);
+                    if (item is Instance.Bus bs)
+                        foreach (var n in bs.Instances)
                             work.Enqueue(n);
                 }
             }
@@ -475,10 +493,10 @@ namespace SMEIL.Parser.Validation
         public void Validate()
         {
             var modules = new IValidator[] {                
-                new CheckInOut(),
                 new CreateInstances(),
                 new WireParameters(),
                 new AssignTypes(),
+                new BuildDependencyGraph(),
             };
 
             foreach (var validator in modules)
