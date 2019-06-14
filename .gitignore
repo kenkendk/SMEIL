@@ -334,3 +334,4 @@ ASALocalRun/
 *.fls
 *.synctex.gz
 *.aux
+SMEIL.Parser/output

@@ -12,7 +12,7 @@
             // If you have changed target frameworks, make sure to update the program path.
             "program": "${workspaceFolder}/SMEIL.Parser/bin/Debug/netcoreapp2.1/SMEIL.Parser.dll",
             //"args": ["examples/pure/addone-simple.sme"],
-            "args": ["../Unittest/smeil/simple/adder_id_untyped.sme"],
+            "args": ["../Unittest/smeil/simple/adder_inout_untyped.sme"],
             "cwd": "${workspaceFolder}/SMEIL.Parser",
             // For more information about the 'console' field, see https://github.com/OmniSharp/omnisharp-vscode/blob/master/debugger-launchjson.md#console-terminal-window
             "console": "internalConsole",
