@@ -23,6 +23,8 @@ namespace SMEIL.Parser.AST
             : base(source)
         {
             Signals = signals.ToDictionary(x => x.Name.Name, x => x.Type);
+            if (Signals.Count == 0)
+                throw new ParserException("Cannot have an empty set of signals in a bus shape", source);            
         }
 
         /// <summary>
@@ -34,6 +36,8 @@ namespace SMEIL.Parser.AST
             : base(source)
         {
             Signals = new Dictionary<string, TypeName>(contents);
+            if (Signals.Count == 0)
+                throw new ParserException("Cannot have an empty set of signals in a bus shape", source);
         }
 
         /// <summary>
