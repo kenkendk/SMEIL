@@ -1,0 +1,20 @@
+type tdata1: { val: i32; };
+type tdata2: { val: i40; };
+
+proc cutoff(in inbus)
+    bus outbus;
+{
+    trace("Wrote value {}", inbus.val);
+    outbus.val = (tdata1.val)inbus.val;
+}
+
+proc plusone(in inbus: tdata1, out outbus: tdata1)
+{
+    trace("Wrote value {}", inbus.val);
+    outbus.val = inbus.val + 1;
+}
+
+network plusone_net(in source: tdata2, out dest: tdata1) {
+    instance cutoff_inst of cutoff(source);
+    instance plusone_inst of plusone(cutoff_inst.outbus, dest);
+}

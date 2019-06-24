@@ -1,0 +1,24 @@
+type tdata: { val: i32; };
+
+proc plusone()
+    bus plusout {
+       val: i32 = 0;
+    };
+
+    bus plusin {
+        val: i32 = 0;
+    };
+{
+    plusout.val = plusin.val + 1;
+}
+
+proc id(in inbus, out outbus)
+{
+    outbus.val = inbus.val;
+}
+
+network plusone_net(in source: tdata, out dest: tdata) {
+    instance id_in of id(source, plusone_inst.plusin);
+    instance plusone_inst of plusone();
+    instance id_out of id(plusone_inst.plusout, dest);
+}

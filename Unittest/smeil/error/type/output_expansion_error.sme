@@ -1,0 +1,13 @@
+type tdata1: { val: i31; };
+type tdata2: { val: i32; };
+
+proc plusone(in inbus: tdata1, out outbus: tdata1)
+{
+    trace("Wrote value {}", inbus.val);
+    outbus.val = inbus.val + 1;
+}
+
+network plusone_net(in source: tdata1, out dest: tdata2) {
+    // Illegal, dest.val is i31 and cannot be extended to i32 without casts
+    instance plusone_inst of plusone(source, dest);
+}

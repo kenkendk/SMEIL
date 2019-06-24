@@ -1,12 +1,12 @@
 type tdata1: { val: i32; };
 type tdata2: { val: i31; };
 
-proc plusone(in inbus: tdata1, out outbus: tdata2)
+proc plusone(in inbus, out outbus: tdata2)
 {
     trace("Wrote value {}", inbus.val);
     outbus.val = inbus.val + 1;
 }
 
 network plusone_net(in source: tdata1, out dest: tdata1) {    
-    instance plusone_inst of plusone(source, dest);
+    instance plusone_inst of plusone((tdata1)source, (tdata2)dest);
 }

@@ -3,6 +3,7 @@ type tdata: { val: i32; };
 proc plusone(in inbus: tdata, out outbus: tdata)
 {
     trace("Wrote value {}", inbus.val);
+    // output bus does not have "valb"
     outbus.valb = inbus.val + 1;
 }
 
