@@ -20,19 +20,19 @@ namespace SMEIL.Parser
         public class Options
         {
             [Option(HelpText = "The VHDL output folder", Default = "./VHDL")]
-            public string VHDLOutputFolder { get; set; }
+            public string VHDLOutputFolder { get; set; } = "./VHDL";
             [Option(HelpText = "The top-level output folder", Default = "output")]
-            public string OutputFolder { get; set; }
+            public string OutputFolder { get; set; } = "output";
             [Option(HelpText = "Create an .xpf file for loading with Xilinx Vivado", Default = true)]
-            public bool CreateXpf { get; set; }
+            public bool CreateXpf { get; set; } = true;
             [Option(HelpText = "The path to the CSV trace file from the simulation", Default = "trace.csv")]
-            public string TraceFile { get; set; }
+            public string TraceFile { get; set; } = "trace.csv";
             [Option(HelpText = "An additional set of VHDL files that should be added to project and make files", Separator = ';')]
             public string[] ExtraVHDLFiles { get; set; }
             [Option(HelpText = "Deletes the target folder before creating the output files")]
             public bool ClearTargetFolder { get; set; }
             [Option(HelpText = "Sets the GHDL standard to use", Default = "93c")]
-            public string GHDLStandard { get; set; }
+            public string GHDLStandard { get; set; } = "93c";
 
 
             [Value(0, MetaName = "filename", HelpText = "The SMEIL filename to parse", Required = true)]
@@ -61,74 +61,10 @@ namespace SMEIL.Parser
                 return 2;
             }
 
-            if (options.GHDLStandard != "93" && options.GHDLStandard != "93c")
-            {
-                Console.WriteLine("Only 93 and 93c are currently supported");
-            }
 
             try
-            {                
-                var state = Loader.LoadModuleAndImports(options.EntryFile, options.TopLevelNetwork, options.Arguments);
-                state.Validate();
-
-                var outputfolder = options.OutputFolder;
-                if (string.IsNullOrWhiteSpace(outputfolder))
-                    outputfolder = ".";
-
-                outputfolder = Path.GetFullPath(outputfolder);
-                if (!Directory.Exists(outputfolder))
-                    Directory.CreateDirectory(outputfolder);
-
-                var vhdlout = Path.GetFullPath(Path.Combine(outputfolder, options.VHDLOutputFolder));
-                if (options.ClearTargetFolder)
-                    Directory.Delete(vhdlout);
-
-                if (!Directory.Exists(vhdlout))
-                    Directory.CreateDirectory(vhdlout);
-
-                var generator = new Codegen.VHDL.VHDLGenerator(state) {
-                    CSVTracename = options.TraceFile,
-                    Ticks = File.Exists(options.TraceFile) ? File.ReadAllLines(options.TraceFile).Count() + 2 : 100,
-                    CustomFiles = options.ExtraVHDLFiles
-                };
-
-                var rs = new Codegen.VHDL.VHDLGenerator.RenderState();
-
-                var export = generator.GenerateExportModule(rs);
-                File.WriteAllText(Path.Combine(vhdlout, "export.vhdl"), export);
-
-                var tdoc = generator.GenerateMainModule(rs);
-                File.WriteAllText(Path.Combine(vhdlout, "toplevel.vhdl"), tdoc);
-
-                var tbdoc = generator.GenerateTestbench(rs);
-                File.WriteAllText(Path.Combine(vhdlout, "testbench.vhdl"), tbdoc);
-
-                var custtypes = generator.GenerateCustomTypes(rs);
-                File.WriteAllText(Path.Combine(vhdlout, "customtypes.vhdl"), custtypes);
-
-                var filenames = new Dictionary<Instance.Process, string>();
-                foreach (var nv in state.AllInstances.OfType<Instance.Network>())
-                {
-                    foreach (var p in nv.Instances.OfType<Instance.Process>())
-                    {
-                        var doc = generator.GenerateProcess(rs, p);
-                        var fn = filenames[p] = generator.ProcessNames[p];
-                        File.WriteAllText(Path.Combine(vhdlout, fn + ".vhdl"), doc);
-                        //Console.WriteLine(doc);
-                    }
-                }
-
-                if (options.CreateXpf)
-                {
-                    var txpf = generator.GenerateXpf(rs, filenames);
-                    File.WriteAllText(Path.Combine(vhdlout, $"project.xpf"), txpf);
-                }
-
-                var makefile = generator.GenerateMakefile(rs, filenames, options.GHDLStandard);
-                File.WriteAllText(Path.Combine(vhdlout, $"Makefile"), makefile);
-
-                generator.CopySupportFiles(vhdlout);
-
+            {
+                RunCompiler(options);
             }
             catch (ParserException ex)
             {
@@ -138,7 +74,79 @@ namespace SMEIL.Parser
 
             return 0;
         }
+
+        public static void RunCompiler(Options options)
+        {
+            if (options.GHDLStandard != "93" && options.GHDLStandard != "93c")
+                throw new ParserException("Only 93 and 93c are currently supported", null);
+
+            var state = Loader.LoadModuleAndImports(options.EntryFile, options.TopLevelNetwork, options.Arguments);
+            state.Validate();
+
+            var outputfolder = options.OutputFolder;
+            if (string.IsNullOrWhiteSpace(outputfolder))
+                outputfolder = ".";
+
+            outputfolder = Path.GetFullPath(outputfolder);
+            if (!Directory.Exists(outputfolder))
+                Directory.CreateDirectory(outputfolder);
+
+            var vhdlout = Path.GetFullPath(Path.Combine(outputfolder, options.VHDLOutputFolder));
+            if (options.ClearTargetFolder && Directory.Exists(vhdlout))
+            {
+                if (string.IsNullOrWhiteSpace(options.VHDLOutputFolder) || options.VHDLOutputFolder.Trim().StartsWith("/"))
+                    throw new ArgumentException($"Refusing to delete folder, please supply a relative path: {options.VHDLOutputFolder}");
+                Directory.Delete(vhdlout, true);
+            }
+
+            if (!Directory.Exists(vhdlout))
+                Directory.CreateDirectory(vhdlout);
+
+            var generator = new Codegen.VHDL.VHDLGenerator(state)
+            {
+                CSVTracename = options.TraceFile,
+                Ticks = File.Exists(options.TraceFile) ? File.ReadAllLines(options.TraceFile).Count() + 2 : 100,
+                CustomFiles = options.ExtraVHDLFiles
+            };
+
+            var rs = new Codegen.VHDL.VHDLGenerator.RenderState();
+
+            var export = generator.GenerateExportModule(rs);
+            File.WriteAllText(Path.Combine(vhdlout, "export.vhdl"), export);
+
+            var tdoc = generator.GenerateMainModule(rs);
+            File.WriteAllText(Path.Combine(vhdlout, "toplevel.vhdl"), tdoc);
+
+            var tbdoc = generator.GenerateTestbench(rs);
+            File.WriteAllText(Path.Combine(vhdlout, "testbench.vhdl"), tbdoc);
+
+            var custtypes = generator.GenerateCustomTypes(rs);
+            File.WriteAllText(Path.Combine(vhdlout, "customtypes.vhdl"), custtypes);
+
+            var filenames = new Dictionary<Instance.Process, string>();
+            foreach (var nv in state.AllInstances.OfType<Instance.Network>())
+            {
+                foreach (var p in nv.Instances.OfType<Instance.Process>())
+                {
+                    var doc = generator.GenerateProcess(rs, p);
+                    var fn = filenames[p] = generator.ProcessNames[p];
+                    File.WriteAllText(Path.Combine(vhdlout, fn + ".vhdl"), doc);
+                    //Console.WriteLine(doc);
+                }
+            }
+
+            if (options.CreateXpf)
+            {
+                var txpf = generator.GenerateXpf(rs, filenames);
+                File.WriteAllText(Path.Combine(vhdlout, $"project.xpf"), txpf);
+            }
+
+            var makefile = generator.GenerateMakefile(rs, filenames, options.GHDLStandard);
+            File.WriteAllText(Path.Combine(vhdlout, $"Makefile"), makefile);
+
+            generator.CopySupportFiles(vhdlout);        }
     }
+
 
     
 }
