@@ -1099,13 +1099,13 @@ namespace SMEIL.Parser.Codegen.VHDL
                         foreach (var bus in toplevelbusses)
                             decl += RenderLines(state,
                                 bus.Instances.OfType<Instance.Signal>()
-                                .Select(x => $"{RenderSignalName(BusNames[bus], x.Name)} => {RenderSignalName(exportnames[bus], x.Name)}")
+                                .Select(x => $"{RenderSignalName(BusNames[bus], x.Name)} => {RenderSignalName(exportnames[bus], x.Name)},")
                             );
 
                         decl += RenderLines(state,
-                            "ENB => ENB",
-                            "RST => RST",
-                            "FIN => FIN",
+                            "ENB => ENB,",
+                            "RST => RST,",
+                            "FIN => FIN,",
                             "CLK => CLK"
                         );
                     }
@@ -1122,7 +1122,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     );
                 }
 
-                decl += RenderLines(state, "end RTL");
+                decl += RenderLines(state, "end RTL;");
                 return decl;
             }
         }
