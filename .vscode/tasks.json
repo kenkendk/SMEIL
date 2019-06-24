@@ -11,5 +11,19 @@
             "reveal": "silent"
         },
         "problemMatcher": "$msCompile"
+    },
+    {
+        "label": "test",
+        "command": "dotnet",
+        "type": "process",
+        "group": {
+            "kind": "test",
+            "isDefault": true
+        },
+        "args": [
+            "test",
+            "${workspaceFolder}/Unittest/Unittest.csproj"
+        ],
+        "problemMatcher": "$msCompile"
     }]
 }
