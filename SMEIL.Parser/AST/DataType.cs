@@ -173,8 +173,8 @@ namespace SMEIL.Parser.AST
                 if (this.Shape.Signals.Count != other.Shape.Signals.Count)
                     return false;
 
-                foreach (var n in this.Shape.Signals.Keys)
-                    if (!other.Shape.Signals.ContainsKey(n))
+                foreach (var n in this.Shape.Signals)
+                    if (!other.Shape.Signals.TryGetValue(n.Key, out var x) || !object.Equals(n.Value, x))
                         return false;
             }
             else if (this.Type != ILType.Bool)
@@ -189,6 +189,8 @@ namespace SMEIL.Parser.AST
         /// <inheritdoc />
         public override bool Equals(object obj)
         {
+            if (obj == null || GetType() != obj.GetType())
+                return false;
             return Equals(obj as DataType);
         }
 
