@@ -25,6 +25,27 @@ namespace SMEIL.Parser.BNF
         public readonly Match[] SubMatches;
 
         /// <summary>
+        /// Traverses the <see name="SubMatches" /> and finds the items with the given indicies
+        /// </summary>
+        /// <param name="indicies">The indices to find</param>
+        /// <returns>The match or null</returns>
+        public Match FindSubMatch(params int[] indicies)
+        {
+            if (indicies == null || indicies.Length == 0)
+                throw new ArgumentException($"The {nameof(indicies)} cannot be null or empty");
+
+            var c = this;
+            foreach (var ix in indicies)
+            {
+                if (c.SubMatches.Length <= ix)
+                    return null;
+                c = c.SubMatches[ix];
+            }
+
+            return c;
+        }
+
+        /// <summary>
         /// A flag indicating if the item matched
         /// </summary>
         public readonly bool Matched;

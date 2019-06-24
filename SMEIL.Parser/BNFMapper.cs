@@ -6,6 +6,10 @@ using static SMEIL.Parser.BNF.StaticUtil;
 
 namespace SMEIL.Parser
 {
+    /// <summary>
+    /// Implementation of a BNF based mapper which constructs AST instances from their parsed tokens.
+    /// The code in this module enforces the SMEIL grammar document
+    /// </summary>
     public static class BNFMapper
     {
         /// <summary>
@@ -55,7 +59,7 @@ namespace SMEIL.Parser
                 x => new AST.FloatingConstant(
                     x.Item, 
 
-                    x.SubMatches[0].SubMatches.Length == 0 || !x.SubMatches[0].SubMatches[0].Matched
+                    x.FindSubMatch(0, 0) == null || !x.FindSubMatch(0, 0).Matched
                         ? new AST.IntegerConstant(x.Item, "0")
                         : x.SubMatches[0].FirstMapper(integer),
 
@@ -70,7 +74,7 @@ namespace SMEIL.Parser
                     "\""
                 ),
 
-                x => new AST.StringConstant(x.Item, string.Join(" ", x.SubMatches[0].SubMatches[1].Flat.Where(n => n.Token is BNF.RegEx).Select(n => n.Item.Text)))
+                x => new AST.StringConstant(x.Item, string.Join(" ", x.FindSubMatch(0, 1).Flat.Where(n => n.Token is BNF.RegEx).Select(n => n.Item.Text)))
             );
 
             var booleanliteral = Mapper(
@@ -231,13 +235,30 @@ namespace SMEIL.Parser
                     x.Item,
                     x.FirstMapper(expression),
                     x.FirstMapper(binaryOperation),
-                    x.SubMatches[0].SubMatches[2].FirstMapper(expression)
+                    x.FindSubMatch(0, 2).FirstMapper(expression)
+                )
+            );
+
+            var typeCastExpression = Mapper(
+                Composite(
+                    "(",
+                    name,
+                    ")",
+                    expression
+                ),
+
+                x => new AST.TypeCast(
+                    x.Item,
+                    x.FirstMapper(expression),
+                    new AST.TypeName(x.FirstMapper(name), null),
+                    true
                 )
             );
 
             // The recursive definition of an expression
             expression.Token = Choice(
                 binaryExpression,
+                typeCastExpression,
                 Mapper(literal, x => new AST.LiteralExpression(x.Item, x.FirstMapper(literal))),
                 Mapper(name, x => new AST.NameExpression(x.Item, x.FirstMapper(name))),
                 Mapper(Composite("(", expression, ")"), x => new AST.ParenthesizedExpression(x.Item, x.FirstMapper(expression))),
@@ -312,9 +333,9 @@ namespace SMEIL.Parser
                 x => new AST.IfStatement(
                     x.Item,
                     x.FirstMapper(expression),
-                    x.SubMatches[0].SubMatches[5].InvokeMappers(statement).ToArray(),
-                    x.SubMatches[0].SubMatches[7].InvokeMappers(elifBlock).ToArray(),
-                    x.SubMatches[0].SubMatches[8].FirstMapper(elseBlock)
+                    x.FindSubMatch(0, 5).InvokeMappers(statement).ToArray(),
+                    x.FindSubMatch(0, 7).InvokeMappers(elifBlock).ToArray(),
+                    x.FindSubMatch(0, 8).FirstMapper(elseBlock)
                 )
             );
 
@@ -334,9 +355,9 @@ namespace SMEIL.Parser
                 x => new AST.ForStatement(
                     x.Item,
                     x.FirstMapper(ident),
-                    x.SubMatches[0].SubMatches[3].FirstMapper(expression),
-                    x.SubMatches[0].SubMatches[5].FirstMapper(expression),
-                    x.SubMatches[0].SubMatches[7].InvokeMappers(statement).ToArray()
+                    x.FindSubMatch(0, 3).FirstMapper(expression),
+                    x.FindSubMatch(0, 5).FirstMapper(expression),
+                    x.FindSubMatch(0, 7).InvokeMappers(statement).ToArray()
                 )
             );
 
@@ -372,7 +393,7 @@ namespace SMEIL.Parser
 
                 x => 
                 {
-                    var defaultCase = x.SubMatches[0].SubMatches[5].InvokeMappers(statement).ToArray();
+                    var defaultCase = x.FindSubMatch(0, 5).InvokeMappers(statement).ToArray();
                     var cases = x.InvokeMappers(switchCase);
                     if (defaultCase.Length > 0)
                         cases = cases.Concat(new[] { new Tuple<AST.Expression, AST.Statement[]>(null, defaultCase) });
@@ -452,7 +473,7 @@ namespace SMEIL.Parser
                 ),
 
                 x => 
-                    x.SubMatches[0].SubMatches[1].SubMatches[0].Token == simpletypename
+                    x.FindSubMatch(0, 1, 0)?.Token == simpletypename
                         ? new AST.TypeName(new AST.DataType(x.Item, x.FirstMapper(simpletypename)), x.FirstOrDefaultMapper(expression))
                         : new AST.TypeName(x.FirstMapper(name), x.FirstOrDefaultMapper(expression))
             );
@@ -627,8 +648,8 @@ namespace SMEIL.Parser
                     x.Item, 
                     x.FirstMapper(ident),
                     x.FirstMapper(typename),
-                    x.SubMatches[0].SubMatches[3].FirstOrDefaultMapper(expression),
-                    x.SubMatches[0].SubMatches[4].FirstOrDefaultMapper(range)
+                    x.FindSubMatch(0, 3).FirstOrDefaultMapper(expression),
+                    x.FindSubMatch(0, 4).FirstOrDefaultMapper(range)
                 )
             );
 
@@ -715,8 +736,8 @@ namespace SMEIL.Parser
                     ";"
                 ),
 
-                x => 
-                    x.SubMatches[0].Token == typename
+                x =>
+                    x.FindSubMatch(0, 3, 0)?.Token == typename
                         ? new AST.TypeDefinition(x.Item, x.FirstMapper(ident), x.FirstMapper(typename))
                         : new AST.TypeDefinition(x.Item, x.FirstMapper(ident), x.InvokeMappers(busSignalDeclaration))
             );
@@ -734,7 +755,7 @@ namespace SMEIL.Parser
 
                 x => new AST.ParameterMap(
                     x.Item,
-                    x.SubMatches[0].SubMatches[0].SubMatches.Length == 0 || !x.SubMatches[0].SubMatches[0].SubMatches[0].Matched
+                    x.FindSubMatch(0, 0, 0) == null || !x.FindSubMatch(0, 0, 0).Matched
                         ? null
                         : x.FirstMapper(ident),
                     x.FirstMapper(expression)
@@ -800,12 +821,12 @@ namespace SMEIL.Parser
 
             var connectEntry = Mapper(
                 Composite(
-                    ident,
+                    name,
                     "->",
-                    ident
+                    name
                 ),
 
-                x => new AST.ConnectEntry(x.Item, x.FirstMapper(ident), x.LastMapper(ident))
+                x => new AST.ConnectEntry(x.Item, x.FirstMapper(name), x.LastMapper(name))
             );
 
             var connectDecl = Mapper(
@@ -814,7 +835,8 @@ namespace SMEIL.Parser
                     connectEntry,
                     Sequence(
                         connectEntry
-                    )
+                    ),
+                    ";"
                 ),
 
                 x => new AST.ConnectDeclaration(x.Item, x.InvokeMappers(connectEntry).ToArray())
@@ -841,9 +863,9 @@ namespace SMEIL.Parser
                 x => new AST.GeneratorDeclaration(
                     x.Item,
                     x.FirstMapper(ident),
-                    x.SubMatches[0].SubMatches[3].FirstMapper(expression),
-                    x.SubMatches[0].SubMatches[5].FirstMapper(expression),
-                    x.SubMatches[0].SubMatches[7].InvokeMappers(networkDecl).ToArray()
+                    x.FindSubMatch(0, 3).FirstMapper(expression),
+                    x.FindSubMatch(0, 5).FirstMapper(expression),
+                    x.FindSubMatch(0, 7).InvokeMappers(networkDecl).ToArray()
                 )
             );
 
@@ -864,7 +886,8 @@ namespace SMEIL.Parser
             networkDecl.Token = Choice(
                 instDecl,
                 constDecl,
-                genDecl
+                genDecl,
+                connectDecl
             );
 
             var process = Mapper(
@@ -885,11 +908,11 @@ namespace SMEIL.Parser
 
                 x => new AST.Process(
                     x.Item,
-                    x.SubMatches[0].SubMatches[0].Item.Text == "clocked",
+                    x.FindSubMatch(0, 0).Item.Text == "clocked",
                     x.FirstMapper(ident),
                     x.FirstOrDefaultMapper(parameters),
-                    x.SubMatches[0].SubMatches[6].InvokeMappers(declaration).ToArray(),
-                    x.SubMatches[0].SubMatches[8].InvokeMappers(statement).ToArray()
+                    x.FindSubMatch(0, 6).InvokeMappers(declaration).ToArray(),
+                    x.FindSubMatch(0, 8).InvokeMappers(statement).ToArray()
                 )
             );
 

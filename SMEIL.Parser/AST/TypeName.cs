@@ -45,5 +45,28 @@ namespace SMEIL.Parser.AST
             Alias = parent;
             Indexer = indexer;
         }
+
+        /// </inheritdoc />
+        public override string ToString()
+        {
+            return IntrinsicType?.ToString() ?? Alias.AsString;
+        }
+
+        /// </inheritdoc />
+        public override bool Equals(object obj)
+        {
+            if (obj == null || IntrinsicType == null || GetType() != obj.GetType())
+                return false;
+
+            return object.Equals(IntrinsicType, (obj as TypeName)?.IntrinsicType);
+        }
+
+        /// </inheritdoc />
+        public override int GetHashCode()
+        {
+            if (IntrinsicType == null)
+                return 1;
+            return IntrinsicType.GetHashCode();
+        }
     }
 }
