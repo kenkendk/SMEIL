@@ -66,5 +66,11 @@ namespace SMEIL.Parser.AST
             return true;
         }
 
+        /// <inheritdoc />
+        public override string ToString()
+        {
+            return "{" + string.Join(";", Signals.Select(x => $" {x.Key}: {x.Value}")) + " }";
+        }
+
     }
 }
