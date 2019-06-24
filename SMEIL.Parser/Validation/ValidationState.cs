@@ -354,21 +354,21 @@ namespace SMEIL.Parser.Validation
                     // This should only fail for the very first item, as the others will fail the check above
                     // and go to the exception message below
                     if (!scope.SymbolTable.TryGetValue(id.Name, out res))
-                        throw new ParserException($"Failed to locate \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", name);
+                        throw new ParserException($"Failed to locate \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", id);
 
                     if (res == null)
-                        throw new ParserException($"Null value in symbol table for \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", name);
+                        throw new ParserException($"Null value in symbol table for \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", id);
                 }
                 else
                 {
-                    throw new ParserException($"No such item \"{id.Name}\" in item {string.Join(".", matched)}", name);
+                    throw new ParserException($"No such item \"{id.Name}\" in item {string.Join(".", matched)}", id);
                 }
 
                 matched.Add(id.Name);
 
                 // We do not need a symbol table for the last item, but all others need a local symbol table
                 if (matched.Count != name.Identifier.Length && !LocalScopes.TryGetValue(res, out scope))
-                    throw new ParserException($"No symbol table for \"{id.Name}\" in item {string.Join(".", matched)}", name);
+                    throw new ParserException($"No symbol table for \"{id.Name}\" in item {string.Join(".", matched)}", id);
             }
 
             return res;
@@ -396,21 +396,21 @@ namespace SMEIL.Parser.Validation
                     // This should only fail for the very first item, as the others will fail the check above
                     // and go to the exception message below
                     if (!scope.TypedefinitionTable.TryGetValue(id.Name, out res))
-                        throw new ParserException($"Failed to locate \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", name);
+                        throw new ParserException($"Failed to locate \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", id);
 
                     if (res == null)
-                        throw new ParserException($"Null value in symbol table for \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", name);
+                        throw new ParserException($"Null value in symbol table for \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", id);
                 }
                 else
                 {
-                    throw new ParserException($"No such item \"{id.Name}\" in item {string.Join(".", matched)}", name);
+                    throw new ParserException($"No such item \"{id.Name}\" in item {string.Join(".", matched)}", id);
                 }
 
                 matched.Add(id.Name);
 
                 // We do not need a symbol table for the last item, but all others need a local symbol table
                 if (matched.Count != name.Identifier.Length && !LocalScopes.TryGetValue(res, out scope))
-                    throw new ParserException($"No symbol table for \"{id.Name}\" in item {string.Join(".", matched)}", name);
+                    throw new ParserException($"No symbol table for \"{id.Name}\" in item {string.Join(".", matched)}", id);
             }
 
             return res;
@@ -653,24 +653,57 @@ namespace SMEIL.Parser.Validation
                     break;
 
                 case ILType.Bus:
-                    var a_signals = ResolveSignalsToIntrinsic(a.Shape.Signals, scope);
-                    var b_signals = ResolveSignalsToIntrinsic(b.Shape.Signals, scope);
+                    // Check that the other side is also a bus
+                    if (b.Type == ILType.Bus)
+                    {
+                        var a_signals = ResolveSignalsToIntrinsic(a.Shape.Signals, scope);
+                        var b_signals = ResolveSignalsToIntrinsic(b.Shape.Signals, scope);
 
-                    // Build a unified type for the shapes
-                    var shape = new BusShape(a.Shape.SourceToken, a_signals);
+                        // Build a unified type for the shapes
+                        var shape = new BusShape(a.Shape.SourceToken, a_signals);
 
-                    foreach (var n in b_signals)
-                        if (!shape.Signals.TryGetValue(n.Key, out var t))
-                            shape.Signals.Add(n.Key, n.Value);
-                        else if (!object.Equals(t, n.Value))
-                            shape.Signals[n.Key] = new AST.TypeName(UnifiedType(n.Value.IntrinsicType, t.IntrinsicType, scope), null);
+                        foreach (var n in b_signals)
+                            if (!shape.Signals.TryGetValue(n.Key, out var t))
+                                shape.Signals.Add(n.Key, n.Value);
+                            else if (!object.Equals(t, n.Value))
+                                // We do not expand variables inside busses
+                                // as there is no good logic for expansion/contraction here
+                                //shape.Signals[n.Key] = new AST.TypeName(UnifiedType(n.Value.IntrinsicType, t.IntrinsicType, scope), null);
+                                return null;
 
-                    return new DataType(a.SourceToken, shape);
+                        return new DataType(a.SourceToken, shape);
+                    }
+                    break;
             }
 
             return null;
         }
 
+        /// <summary>
+        /// Resolves all type aliases on the given input type and returns a similar type with only intrinsic values
+        /// </summary>
+        /// <param name="input">The item to resolve</param>
+        /// <returns>The resolved type</returns>
+        public DataType ResolveToIntrinsics(DataType input, ScopeState scope)
+        {
+            if (input == null || !input.IsBus)
+                return input;
+
+            return new DataType(
+                input.SourceToken, 
+                new BusShape(
+                    input.Shape.SourceToken, 
+                    ResolveSignalsToIntrinsic(input.Shape.Signals, scope)
+                )
+            ); 
+        }
+
+        /// <summary>
+        /// Expands a set of signals to their base types (i.e. erases type definitions)
+        /// </summary>
+        /// <param name="signals"></param>
+        /// <param name="scope"></param>
+        /// <returns></returns>
         public IDictionary<string, TypeName> ResolveSignalsToIntrinsic(IDictionary<string, TypeName> signals, ScopeState scope)
         {
             return signals

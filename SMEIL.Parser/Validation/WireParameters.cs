@@ -67,7 +67,7 @@ namespace SMEIL.Parser.Validation
 
                     var value = state.ResolveSymbol(p.Expression, scope);
                     if (value == null)
-                        throw new ParserException("Unable to resolve expression", p.Expression);
+                        throw new ParserException("Unable to resolve expression", p.Expression.SourceToken);
 
                     var sourceparam = sourceinstance.SourceParameters[pos];
 
@@ -78,16 +78,20 @@ namespace SMEIL.Parser.Validation
                         : state.ResolveTypeName(sourceparam.ExplictType, scope);
 
                     if (parametertype.IsValue && sourceparam.Direction == AST.ParameterDirection.Out)
-                        throw new ParserException($"Cannot use a value-type parameter as output: {sourceparam.Name}", sourceparam);
+                        throw new ParserException($"Cannot use a value-type parameter as output: {sourceparam.SourceToken}", sourceparam);
+
+                    // We need to expand both types to intrinsics to remove any type aliases that need lookups
+                    var intrinsic_itemtype = state.ResolveToIntrinsics(itemtype, scope);
+                    var intrinsic_parametertype = state.ResolveToIntrinsics(parametertype, scope);
 
                     // Check argument compatibility
-                    if (!state.CanUnifyTypes(itemtype, parametertype, scope))
-                        throw new ParserException($"Cannot use {p.Expression} of type {itemtype} as the argument for {sourceparam.Name} of type {parametertype}", sourceparam);
+                    if (!state.CanUnifyTypes(intrinsic_itemtype, intrinsic_parametertype, scope))
+                        throw new ParserException($"Cannot use {p.Expression.SourceToken} of type {intrinsic_itemtype.ToString()} as the argument for {sourceparam.Name.SourceToken} of type {intrinsic_parametertype}", p.Expression);
                     
                     // Check that the type we use as input is "larger" than the target
-                    var unified = state.UnifiedType(itemtype, parametertype, scope);
-                    if (!object.Equals(unified, itemtype))
-                        throw new ParserException($"Cannot use {p.Expression} of type {itemtype} as the argument for {sourceparam.Name} of type {parametertype}", sourceparam);
+                    var unified = state.UnifiedType(intrinsic_itemtype, parametertype, scope);
+                    if (!object.Equals(unified, intrinsic_itemtype))
+                        throw new ParserException($"Cannot use {p.Expression.SourceToken} of type {intrinsic_itemtype.ToString()} as the argument for {sourceparam.Name.SourceToken} of type {intrinsic_parametertype}", p.Expression);
 
                     map[pos] = new Instance.MappedParameter(p, sourceparam, value, parametertype);
 
