@@ -61,9 +61,7 @@ namespace SMEIL.Parser.Validation
                     if (instance.AssignedTypes.ContainsKey(item.Current))
                         continue;
 
-                    if (item.Current is AST.ParenthesizedExpression parenthesizedExpression)
-                        instance.AssignedTypes[item.Current] = instance.AssignedTypes[parenthesizedExpression.Expression];
-                    else if (item.Current is AST.UnaryExpression unaryExpression)
+                    if (item.Current is AST.UnaryExpression unaryExpression)
                     {
                         var sourceType = instance.AssignedTypes[unaryExpression.Expression];
 
@@ -172,12 +170,19 @@ namespace SMEIL.Parser.Validation
                             continue;
 
                         var sourceType = instance.AssignedTypes[typecastExpression.Expression];
+                        var targetType = state.ResolveTypeName(typecastExpression.TargetName, scope);
 
-                        if (!state.CanTypeCast(sourceType, typecastExpression.TargetType, scope))
-                            throw new ParserException($"Cannot cast from {sourceType} to {typecastExpression.TargetType}", typecastExpression);
+                        if (!state.CanTypeCast(sourceType, targetType, scope))
+                            throw new ParserException($"Cannot cast from {sourceType} to {typecastExpression.TargetName}", typecastExpression);
 
-                        instance.AssignedTypes[typecastExpression] = typecastExpression.TargetType;
+                        instance.AssignedTypes[typecastExpression] = targetType;
                     }
+                    // Carry parenthesis expression types
+                    else if (item.Current is AST.ParenthesizedExpression parenthesizedExpression)
+                    {
+                        instance.AssignedTypes[item.Current] = instance.AssignedTypes[parenthesizedExpression.Expression];
+                    }
+
                 }
 
                 // Then make sure we have assigned all targets
@@ -197,10 +202,10 @@ namespace SMEIL.Parser.Validation
                             throw new ParserException($"Assignment must be to a variable or a signal", item.Current);
 
                         if (!state.CanUnifyTypes(targetType, exprType, scope))
-                            throw new ParserException($"Cannot assign {exprType} to {assignmentStatement.Name} with type {targetType}", item.Current);
+                            throw new ParserException($"Cannot assign \"{assignmentStatement.Value}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item.Current);
                         var unified = state.UnifiedType(targetType, exprType, scope);
                         if (!object.Equals(unified, targetType))
-                            throw new ParserException($"Cannot assign {exprType} to {assignmentStatement.Name} with type {targetType}", item.Current);
+                            throw new ParserException($"Cannot assign \"{assignmentStatement.Value}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item.Current);
 
                         state.RegisterItemUsageDirection(instance, symbol, ItemUsageDirection.Write, item.Current);
                     }                  
