@@ -82,7 +82,7 @@
 
   <connect-entry> ::= <name> '->' <name>
 
-  <connect-decl> ::= connect <connect-entry> \{ <connect-entry> \} ';'
+  <connect-decl> ::= connect <connect-entry> \{ `,' <connect-entry> \} ';'
 
   <inst-decl> ::= `instance' <instance-name> `of' <ident> \\`(' [ <param-map> 
   \{ `,' <param-map> \} ] `)' `;'

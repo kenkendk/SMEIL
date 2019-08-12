@@ -136,6 +136,19 @@ namespace SMEIL.Parser
                         continue;
                     }
 
+                    // Combine -> to a single token
+                    if (c == '-' && reader.Peek() == '>')
+                    {
+                        reader.Read();
+                        var ct = new ParseToken(charoffset, line, lineoffset, "->");
+
+                        charoffset += ct.Text.Length;
+                        lineoffset += ct.Text.Length;
+
+                        yield return ct;
+                        continue;
+                    }
+
                     if (!iswhitespace)
                         yield return new ParseToken(charoffset, line, lineoffset, c.ToString());
                     

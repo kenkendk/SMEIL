@@ -20,11 +20,7 @@ namespace Unittest.Adder
         [TestMethod]
         public void DownsizeCastingExplicitTypeSimple()
         {
-            try { TestAdderCasting_core("../../../smeil/casting/downsize_casting_explicit_type_simple.sme"); }
-            catch (SMEIL.Parser.ParserException pex)
-            {
-                throw new System.ArgumentException($"{pex.Message} - {pex.Location}");
-            }
+            TestAdderCasting_core("../../../smeil/casting/downsize_casting_explicit_type_simple.sme");
         }
 
         [TestMethod]

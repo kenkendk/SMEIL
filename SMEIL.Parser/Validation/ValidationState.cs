@@ -124,14 +124,14 @@ namespace SMEIL.Parser.Validation
         /// <summary>
         /// The graph explaining which processes a process depends on
         /// </summary>
-        public Dictionary<Instance.Process, Instance.Process[]> DependencyGraph;
+        public Dictionary<MetaProcess, MetaProcess[]> DependencyGraph;
 
         /// <summary>
         /// A sequence of processes, where items in the inner list can
         /// be scheduled in parallel, and the outer list items have
         /// interdependencies
         /// </summary>
-        public List<List<Instance.Process>> SuggestedSchedule;
+        public List<List<MetaProcess>> SuggestedSchedule;
 
         /// <summary>
         /// Creates a new validation state shadowing the 
@@ -551,6 +551,10 @@ namespace SMEIL.Parser.Validation
             {
                 scope.SymbolTable.Add(inst.Name.Name.Name, decl);
             }
+            else if (decl is ConnectDeclaration connDecl)
+            {
+                // No wiring required here for connections
+            }
             else
             {
                 throw new Exception($"Unexpeced declaration type: {decl.GetType()}");
@@ -697,6 +701,26 @@ namespace SMEIL.Parser.Validation
                 )
             ); 
         }
+
+        /// <summary>
+        /// Resolves the data types of all signals on a bus
+        /// </summary>
+        /// <param name="bus">The bus to examine</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns>The data type of the of the bus</returns>
+        public DataType ResolveBusSignalTypes(Instance.Bus bus, Validation.ScopeState scope)
+        {
+            if (bus.ResolvedSignalTypes == null)
+            {
+                var shape = this.ResolveSignalsToIntrinsic(bus.ResolvedType.Shape.Signals, scope);
+                bus.ResolvedSignalTypes = shape.ToDictionary(x => x.Key, x => x.Value.IntrinsicType);
+                foreach (var s in bus.Instances.OfType<Instance.Signal>())
+                    s.ResolvedType = bus.ResolvedSignalTypes[s.Name];
+            }
+
+            return new DataType(bus.Source.SourceToken, new BusShape(bus.Source.SourceToken, bus.Instances.OfType<Instance.Signal>().Select(x => x.Source)));
+        }
+
 
         /// <summary>
         /// Expands a set of signals to their base types (i.e. erases type definitions)

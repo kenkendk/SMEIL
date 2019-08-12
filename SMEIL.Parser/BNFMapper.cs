@@ -834,7 +834,10 @@ namespace SMEIL.Parser
                     "connect",
                     connectEntry,
                     Sequence(
-                        connectEntry
+                        Composite(
+                            ",",
+                            connectEntry
+                        )
                     ),
                     ";"
                 ),

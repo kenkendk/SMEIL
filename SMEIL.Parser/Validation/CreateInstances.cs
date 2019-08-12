@@ -96,6 +96,22 @@ namespace SMEIL.Parser.Validation
                             throw new ParserException($"The item {instDecl.SourceItem} is not a process, but a {sym.GetType().Name}", decl);
                     }
                 }
+                else if (decl is AST.ConnectDeclaration connDecl)
+                {
+                    foreach (var connEntry in connDecl.Entries)
+                    {                        
+                        var lhs = state.FindSymbol(connEntry.Source, scope) ?? throw new ParserException($"Could not resolve symbol {connEntry.Source.SourceToken}", connEntry.Source);
+                        var rhs = state.FindSymbol(connEntry.Target, scope) ?? throw new ParserException($"Could not resolve symbol {connEntry.Target.SourceToken}", connEntry.Target);
+
+                        if (lhs is Instance.Signal lhs_signal && rhs is Instance.Signal rhs_signal)
+                            parentCollection.Add(new Instance.Connection(connEntry, lhs_signal, rhs_signal));
+                        else if (lhs is Instance.Bus lhs_bus && rhs is Instance.Bus rhs_bus)
+                            parentCollection.Add(new Instance.Connection(connEntry, lhs_bus, rhs_bus));
+                        else
+                            throw new ParserException($"The item {connEntry.Source.SourceToken} (of type {lhs.GetType()}) cannot be mapped to {connEntry.Target.SourceToken} (of type {rhs.GetType()}), only signal -> signal or bus -> bus mappings are allowed", connEntry.SourceToken);
+                        }
+
+                }
                 else
                     throw new ParserException($"Attempted to create an instance of type: {decl.GetType()}", decl);
             }

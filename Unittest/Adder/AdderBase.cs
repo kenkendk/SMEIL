@@ -159,7 +159,7 @@ namespace Unittest.Adder
         /// Parses the program from source and creates the VHDL output for the program
         /// </summary>
         /// <param name="source">The source file</param>
-        private static void GenerateVHDLAndVerify(string source)
+        public static void GenerateVHDLAndVerify(string source)
         {
             var outname = Path.GetFileNameWithoutExtension(source);
             var targetdir = Path.Combine("output", outname);

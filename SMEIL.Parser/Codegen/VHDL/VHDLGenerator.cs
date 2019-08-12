@@ -1244,11 +1244,26 @@ namespace SMEIL.Parser.Codegen.VHDL
                         "-- Connect RDY signals"
                     );
 
+                    // We remove all the connect statements by attaching the dependencies directly
+                    var graph = new Dictionary<Validation.MetaProcess, Validation.MetaProcess[]>();
+                    foreach (var k in ValidationState.DependencyGraph)
+                        if (k.Key.Process != null)
+                            graph[k.Key] = k.Value.SelectMany(
+                                x => 
+                                    x.Connection != null 
+                                    ? ValidationState.DependencyGraph[x] 
+                                    : new [] { x }
+                                )
+                                .Distinct()
+                                .ToArray();
+
+
+
                     decl += RenderLines(state,
-                        ValidationState.DependencyGraph.Select(
+                        graph.Select(
                             x => {
                                 var depends = x.Value;
-                                var selfsignal = RenderIdentifier(state, "RDY_", x.Key.DeclarationSource.Name.Name, null);
+                                var selfsignal = RenderIdentifier(state, "RDY_", x.Key.Process.DeclarationSource.Name.Name, null);
                                 if (depends.Length == 0)
                                     return $"{selfsignal} <= RDY;";
 
@@ -1257,7 +1272,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                                         " and ", 
                                         x.Value
                                             .Select(
-                                                y => RenderIdentifier(state, "FIN_", y.DeclarationSource.Name.Name, null)
+                                                y => RenderIdentifier(state, "FIN_", y.Process.DeclarationSource.Name.Name, null)
                                             )
                                     );
 
@@ -1279,9 +1294,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                         string.Join(
                             " and ",
                             ValidationState.SuggestedSchedule
+                                .Where(x => x.Any(y => y.Process != null))
                                 .Last()
                                 .Select(
-                                    y => RenderIdentifier(state, "FIN_", y.DeclarationSource.Name.Name, null)
+                                    y => RenderIdentifier(state, "FIN_", y.Process.DeclarationSource.Name.Name, null)
                                 )
                         );
 
