@@ -9,7 +9,7 @@ proc plusone()
         val: i32 = 0;
     };
 {
-    trace("Wrote value {}", inbus.val);
+    trace("Wrote value {}", plusin.val);
     plusout.val = plusin.val + 1;
 }
 
@@ -17,7 +17,7 @@ network plusone_net(in source: tdata, out dest: tdata) {
     instance plusone_inst of plusone();
 
     connect 
-        source -> plusone_inst.plusin.val;
-        plusone_inst.plusout.val -> dest;
+        source.val -> plusone_inst.plusin.val,
+        plusone_inst.plusout.val -> dest.val;
 
 }

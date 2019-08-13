@@ -39,7 +39,7 @@ namespace Unittest.Adder
             state.Validate();
 
             Assert.AreEqual(1, state.AllInstances.OfType<SMEIL.Parser.Instance.Network>().Count());
-            Assert.AreEqual(1, state.AllInstances.OfType<SMEIL.Parser.Instance.Process>().Count());
+            Assert.AreEqual(2, state.AllInstances.OfType<SMEIL.Parser.Instance.Process>().Count());
 
             var mainproc = state.AllInstances.OfType<SMEIL.Parser.Instance.Process>().First();
             var mainnet = state.AllInstances.OfType<SMEIL.Parser.Instance.Network>().First();
@@ -69,7 +69,7 @@ namespace Unittest.Adder
             state.Validate();
 
             Assert.AreEqual(1, state.AllInstances.OfType<SMEIL.Parser.Instance.Network>().Count());
-            Assert.AreEqual(1, state.AllInstances.OfType<SMEIL.Parser.Instance.Process>().Count());
+            Assert.AreEqual(3, state.AllInstances.OfType<SMEIL.Parser.Instance.Process>().Count());
 
             var mainproc = state.AllInstances.OfType<SMEIL.Parser.Instance.Process>().First();
             var mainnet = state.AllInstances.OfType<SMEIL.Parser.Instance.Network>().First();

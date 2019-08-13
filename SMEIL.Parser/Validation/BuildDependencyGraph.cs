@@ -16,21 +16,15 @@ namespace SMEIL.Parser.Validation
             // Keep a list of unscheduled processes
             var remainingprocesses = state.AllInstances
                 .OfType<Instance.Process>()
-                .Select(x => new MetaProcess(x))
-                .Concat(
-                    state.AllInstances
-                    .OfType<Instance.Connection>()
-                    .Select(x => new MetaProcess(x))
-                )
                 .ToList();
             
             // Keep track of wavefronts of processes
-            var roots = new List<List<MetaProcess>>();
+            var roots = new List<List<Instance.Process>>();
 
             // Map all output signals to their writers
             var writers = remainingprocesses
                 .SelectMany(
-                    x => x.OutputSignals(state)
+                    x => OutputSignals(state, x)
                         .Select(z => new { P = x, S = z })
                 )
                 .GroupBy(x => x.S)
@@ -44,13 +38,13 @@ namespace SMEIL.Parser.Validation
 
             if (doublewrite != null)
             {
-                var dblnames = string.Join(Environment.NewLine, writers[doublewrite].Select(x => x.ReportedName));
+                var dblnames = string.Join(Environment.NewLine, writers[doublewrite].Select(x => x.Name));
                 throw new ParserException($"Multiple writers found for signal {doublewrite.Name}: {Environment.NewLine} {dblnames}", doublewrite.Source);
             }
 
             // Register all inputs as having no writers
             foreach (var s in state.TopLevel.InputBusses.SelectMany(x => x.Instances.OfType<Instance.Signal>()))
-                writers.Add(s, new List<MetaProcess>());
+                writers.Add(s, new List<Instance.Process>());
 
             // Prepare a list of signals processed by all writers
             var ready = new HashSet<Instance.Signal>(
@@ -60,7 +54,7 @@ namespace SMEIL.Parser.Validation
             // Find signals with no writers
             var orphansSignal = remainingprocesses
                 .SelectMany(
-                    x => x.InputSignals(state)
+                    x => InputSignals(state, x)
                     .Where(z => !writers.ContainsKey(z))
                 )
                 .FirstOrDefault();
@@ -71,7 +65,7 @@ namespace SMEIL.Parser.Validation
             // Find all processes that each process depends on
             var dependsOn = remainingprocesses
                 .SelectMany(
-                    x => x.InputSignals(state)
+                    x => InputSignals(state, x)
                         .Select(z => new { 
                             P = x, 
                             D = writers[z]
@@ -84,7 +78,7 @@ namespace SMEIL.Parser.Validation
             // Keep removing processes until all have been scheduled
             while(remainingprocesses.Count > 0)
             {
-                var current = new List<MetaProcess>();
+                var current = new List<Instance.Process>();
 
                 // Find all processes where all signals are ready
                 // and remove them from the list of waiters
@@ -92,7 +86,7 @@ namespace SMEIL.Parser.Validation
                 {
                     var rp = remainingprocesses[i];
                     var allInputsReady = 
-                        rp.InputSignals(state)
+                        InputSignals(state, rp)
                         .All(x => ready.Contains(x));
 
                     if (allInputsReady)
@@ -104,12 +98,12 @@ namespace SMEIL.Parser.Validation
 
                 // If a round does not remove any items, we have a circular dependency
                 if (current.Count == 0)
-                    throw new Exception("Cicular bus dependency detected, remaining processes: " + string.Join(Environment.NewLine, remainingprocesses.Select(x => x.ReportedName)));
+                    throw new Exception("Cicular bus dependency detected, remaining processes: " + string.Join(Environment.NewLine, remainingprocesses.Select(x => x.Name)));
 
                 // Register all signals that are now fully written
                 var completedsignals = current
                     .SelectMany(
-                        x => x.OutputSignals(state)
+                        x => OutputSignals(state, x)
                     )
                     .Where(
                         x => !ready.Contains(x) && !writers[x]
@@ -127,6 +121,57 @@ namespace SMEIL.Parser.Validation
 
             state.DependencyGraph = dependsOn;
             state.SuggestedSchedule = roots;
+
+        }
+
+        /// <summary>
+        /// Returns all input signals for the process or connection
+        /// </summary>
+        /// <param name="state">The state object</param>
+        /// <returns>The input signals</returns>
+        public IEnumerable<Instance.Signal> InputSignals(ValidationState state, Instance.Process process)
+        {
+            return process.MappedParameters
+                .Where(x => x.MappedItem is Instance.Bus && x.MatchedParameter.Direction == AST.ParameterDirection.In)
+                .Select(x => x.MappedItem)
+                .Cast<Instance.Bus>()
+                .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                .Concat(
+                    process.Instances
+                        .OfType<Instance.Bus>()
+                        .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                        .Where(x =>
+                            state.ItemDirection[process].ContainsKey(x)
+                            &&
+                            state.ItemDirection[process][x] == ItemUsageDirection.Read
+                        )
+                )
+                .Distinct();
+        }
+
+        /// <summary>
+        /// Returns all output signals for a process or connection
+        /// </summary>
+        /// <param name="state">The state object</param>
+        /// <returns>The output signals</returns>
+        public IEnumerable<Instance.Signal> OutputSignals(ValidationState state, Instance.Process process)
+        {
+            return process.MappedParameters
+                .Where(x => x.MappedItem is Instance.Bus && x.MatchedParameter.Direction == AST.ParameterDirection.Out)
+                .Select(x => x.MappedItem)
+                .Cast<Instance.Bus>()
+                .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                .Concat(
+                    process.Instances
+                        .OfType<Instance.Bus>()
+                        .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                        .Where(x =>
+                            state.ItemDirection[process].ContainsKey(x)
+                            &&
+                            state.ItemDirection[process][x] == ItemUsageDirection.Write
+                        )
+                )
+                .Distinct();
 
         }
     }

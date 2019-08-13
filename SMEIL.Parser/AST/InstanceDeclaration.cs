@@ -21,7 +21,7 @@ namespace SMEIL.Parser.AST
         /// </summary>
         /// <param name="token">The token used to create the instance declaration</param>
         /// <param name="name">The name of this instance</param>
-        /// <param name="SourceItem">The item being instantiated</param>
+        /// <param name="sourceItem">The item being instantiated</param>
         /// <param name="parameters">The parameters to instantiate</param>
         public InstanceDeclaration(ParseToken token, InstanceName name, Identifier sourceItem, ParameterMap[] parameters)
             : base(token)

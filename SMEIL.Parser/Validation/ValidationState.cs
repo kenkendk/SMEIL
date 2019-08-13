@@ -124,14 +124,14 @@ namespace SMEIL.Parser.Validation
         /// <summary>
         /// The graph explaining which processes a process depends on
         /// </summary>
-        public Dictionary<MetaProcess, MetaProcess[]> DependencyGraph;
+        public Dictionary<Instance.Process, Instance.Process[]> DependencyGraph;
 
         /// <summary>
         /// A sequence of processes, where items in the inner list can
         /// be scheduled in parallel, and the outer list items have
         /// interdependencies
         /// </summary>
-        public List<List<MetaProcess>> SuggestedSchedule;
+        public List<List<Instance.Process>> SuggestedSchedule;
 
         /// <summary>
         /// Creates a new validation state shadowing the 
@@ -281,7 +281,7 @@ namespace SMEIL.Parser.Validation
             else if (expression is LiteralExpression literal)
                 return new Instance.Literal(literal.Value);
             else
-                throw new ParserException($"Composite expressions not yet supported for binding parameters", expression);
+                throw new ParserException($"Expression not supported for binding parameters", expression);
         }
 
         /// <summary>

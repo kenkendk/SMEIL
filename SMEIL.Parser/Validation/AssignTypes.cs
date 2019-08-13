@@ -19,67 +19,10 @@ namespace SMEIL.Parser.Validation
             // Traverse the state, starting with networks
             foreach (var networkInstance in state.AllInstances.OfType<Instance.Network>())
             {
-                // Map up the connect statements
-                foreach (var conn in networkInstance.Instances.OfType<Instance.Connection>())
-                {
-                    var scope = state.LocalScopes[networkInstance];
-
-                    // Resolve each side of the connect and verify type compatibility
-                    if (conn.Source is Instance.Bus sourceBus)
-                    {
-                        if (conn.Target is Instance.Bus targetBus)
-                        {
-                            // Resolve the types, if not already done
-                            var typea = state.ResolveBusSignalTypes(sourceBus, scope);
-                            var typeb = state.ResolveBusSignalTypes(targetBus, scope);
-
-                            if (!typea.Equals(typeb))
-                                throw new ParserException($"Type mismatch in connect statemet left hand has type {typea} and right hand is type {typeb}", conn.DeclarationSource);
-
-                        }
-                        else
-                            throw new ParserException("Can only connect bus -> bus or signal -> signal", conn.DeclarationSource);
-                    }
-                    else if (conn.Source is Instance.Signal sourceSignal)
-                    {
-                        if (conn.Target is Instance.Signal targetSignal)
-                        {
-                            // Resolve the types, if not already done
-                            if (sourceSignal.ParentBus.ResolvedSignalTypes == null)
-                                state.ResolveBusSignalTypes(sourceSignal.ParentBus, scope);
-                            if (targetSignal.ParentBus.ResolvedSignalTypes == null)
-                                state.ResolveBusSignalTypes(targetSignal.ParentBus, scope);
-
-                            if (!sourceSignal.ResolvedType.Equals(targetSignal.ResolvedType))
-                                throw new ParserException($"Type mismatch in connect statemet left hand has type {sourceSignal.ResolvedType} and right hand is type {targetSignal.ResolvedType}", conn.DeclarationSource);
-                        }
-                        else
-                            throw new ParserException("Can only connect bus -> bus or signal -> signal", conn.DeclarationSource);
-                    }
-                    else
-                        throw new ParserException($"Unexpected source type: {conn.Source.GetType()}", conn.SourceItem);
-
-                    // Then make sure the types are compatible
-                }
-
-                // Then assign all types in all instantiated processes
+                // Assign all types in all instantiated processes
                 foreach (var instance in networkInstance.Instances.OfType<Instance.Process>())
                     AssignProcessTypes(state, instance);                
             }
-
-            // We use the instances to define new scopes for names
-            // foreach (var instanceDecl in state.Modules.Values.All().OfType<AST.InstanceDeclaration>())
-            // {
-            //     var scope = state.FindScopeForItem(instanceDecl);
-            //     scope.SymbolTable.TryGetValue(instanceDecl.Current.Name.Name.Name, out var instanceobj);
-            //     if (instanceobj == null)
-            //         throw new ArgumentException($"Failed to find element with name {instanceDecl.Current.Name.Name.Name}");
-
-            //     if (!(instanceobj is Instance.Process instance))
-            //         throw new ArgumentException($"The item with name {instanceDecl.Current.Name.Name.Name} should have type{nameof(Instance.Signal)} but has ");
-
-            //     AssignProcessTypes(state, instance);
-            // }
         }
 
         /// <summary>
