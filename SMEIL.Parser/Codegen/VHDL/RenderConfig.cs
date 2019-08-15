@@ -121,6 +121,11 @@ namespace SMEIL.Parser.Codegen.VHDL
         public bool AVOID_SLL_AND_SRL { get; private set; } = true;
 
         /// <summary>
+        /// Removes processes that are simply forwarding signals, which produces a smaller output project
+        /// </summary>
+        public bool REMOVE_IDENTITY_PROCESSES = true;
+
+        /// <summary>
         /// Avoids using the detected signal direction and uses the defined signal directions instead 
         /// </summary>
         public bool USE_DEFINED_SIGNAL_DIRECTIONALITY { get; private set; } = false;

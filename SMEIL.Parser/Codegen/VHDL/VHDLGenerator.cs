@@ -74,6 +74,11 @@ namespace SMEIL.Parser.Codegen.VHDL
         public readonly List<Instance.Process> AllProcesses;
 
         /// <summary>
+        /// The list of all rendered processes
+        /// </summary>
+        public readonly Instance.Process[] AllRenderedProcesses;
+
+        /// <summary>
         /// The state passed to each render step
         /// </summary>
         public class RenderState
@@ -158,8 +163,10 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// Creates a new VHDL generator
         /// </summary>
         /// <param name="validationstate">The validation state to use</param>
-        public VHDLGenerator(Validation.ValidationState validationstate)
+        /// <param name="config">The configuration to use</param>
+        public VHDLGenerator(Validation.ValidationState validationstate, RenderConfig config = null)
         {
+            Config = config ?? new RenderConfig();
             ValidationState = validationstate;
 
             // List of instantiated busses
@@ -183,10 +190,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                 })
                 .ToDictionary(x => x.Key, x => x.Name);
 
-            // List of instantiated busses
+            // List of instantiated processes
             AllProcesses = validationstate
                 .AllInstances
-                .OfType<Instance.Process>()
+                .OfType<Instance.Process>()                
                 .Distinct()
                 .ToList();
 
@@ -201,6 +208,12 @@ namespace SMEIL.Parser.Codegen.VHDL
                     Name = x.Name + (proccounters[x.Name].Count == 1 ? "" : "_" + (proccounters[x.Name].IndexOf(x) + 1).ToString())
                 })
                 .ToDictionary(x => x.Key, x => x.Name);
+
+            AllRenderedProcesses = validationstate
+                .AllInstances
+                .OfType<Instance.Process>()
+                .Where(x => !Config.REMOVE_IDENTITY_PROCESSES || x.Type == Instance.ProcessType.Normal)
+                .ToArray();
         }
 
         /// <summary>
@@ -1142,12 +1155,20 @@ namespace SMEIL.Parser.Codegen.VHDL
                 var decl = GenerateVHDLFilePreamble(state); 
                 decl += RenderLines(state, $"entity {name} is");
 
+                // List of all busses not visible outside the network
                 var internalbusses = AllBusses
                     .Where(x =>
                         !ValidationState.TopLevel.InputBusses.Contains(x)
                         &&
                         !ValidationState.TopLevel.OutputBusses.Contains(x)
                     ).ToArray();
+
+                // All processes that forward signals
+                var forwardprocs = ValidationState
+                    .AllInstances
+                    .OfType<Instance.Process>()
+                    .Where(x => !AllRenderedProcesses.Contains(x))
+                    .ToArray();
 
                 using (state.Indenter())
                 {
@@ -1213,13 +1234,11 @@ namespace SMEIL.Parser.Codegen.VHDL
                     );
 
                     decl += RenderLines(state,
-                        ValidationState
-                        .AllInstances
-                        .OfType<Instance.Process>()
-                        .SelectMany(proc => new string[] {
+                         AllRenderedProcesses
+                         .SelectMany(proc => new string[] {
                             $"signal RDY_{ProcessNames[proc]}: STD_LOGIC;",
                             $"signal FIN_{ProcessNames[proc]}: STD_LOGIC;",
-                        })
+                         })
                     );
 
                     decl += RenderLines(state,
@@ -1237,28 +1256,17 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                 using(state.Indenter())
                 {
-                    foreach (var inst in ValidationState.AllInstances.OfType<Instance.Process>())
+                    foreach (var inst in AllRenderedProcesses)
                         decl += RenderProcessInstantiation(state, inst);
 
-                    decl += RenderLines(state, 
+                    decl += RenderLines(state,
                         "-- Connect RDY signals"
                     );
 
                     // We remove all the connect statements by attaching the dependencies directly
-                    var graph = new Dictionary<Instance.Process, Instance.Process[]>();
-                    foreach (var k in ValidationState.DependencyGraph)
-                        if (k.Key != null)
-                            graph[k.Key] = k.Value.SelectMany(
-                                x => 
-                                    x != null 
-                                    ? ValidationState.DependencyGraph[x] 
-                                    : new [] { x }
-                                )
-                                .Distinct()
-                                .ToArray();
+                    var graph = BuildPrunedGraph();
 
-
-
+                    // Build dependencies from the pruned graph
                     decl += RenderLines(state,
                         graph.Select(
                             x => {
@@ -1288,13 +1296,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                     );
 
                     // The trail-level signals contribute to the final FIN
-                    // We could do reverse lookup in the DependencyGraph, 
-                    // but lookup via the schedule is easier
                     var finsignals =
                         string.Join(
                             " and ",
-                            ValidationState.SuggestedSchedule
-                                .Last()
+                                LeafProcesses(graph)
                                 .Select(
                                     y => "FIN_" + ProcessNames[y]
                                 )
@@ -1312,6 +1317,57 @@ namespace SMEIL.Parser.Codegen.VHDL
                             bus.Instances.OfType<Instance.Signal>()
                                 .Select(x => $"tb_{RenderSignalName(BusNames[bus], x.Name)} <= {RenderSignalName(BusNames[bus], x.Name)};")
                         );
+
+                    // Wire up all the removed forwarding process signals, if any
+                    if (forwardprocs.Length > 0)
+                    {
+                        decl += RenderLines(state, 
+                            "",
+                            "-- Forwards from connect statements and type casts"
+                        );
+
+                        foreach (var rp in forwardprocs)
+                        {
+                            //decl += RenderLines(state, $"-- Signals from {ProcessNames[rp]}");
+                            var sourcebus = rp.MappedParameters.Where(x => x.MappedItem is Instance.Bus && x.MatchedParameter.Direction == AST.ParameterDirection.In).FirstOrDefault();
+                            var targetbus = rp.MappedParameters.Where(x => x.MappedItem is Instance.Bus && x.MatchedParameter.Direction == AST.ParameterDirection.Out).FirstOrDefault();
+                            if (sourcebus == null || targetbus == null)
+                                throw new Exception("Incorrect process definition for identity process");
+
+                            foreach (var stm in rp.ProcessDefinition.Statements.OfType<AST.AssignmentStatement>())
+                            {
+                                if (stm.Value is AST.NameExpression nme)
+                                {
+                                    // Extract the bus name
+                                    var sourcebusname = nme.Name.Identifier.TakeLast(2).First().Name;
+                                    var targetbusname = stm.Name.Identifier.TakeLast(2).First().Name;
+
+                                    // Extract the signal name
+                                    var sourcesignalname = nme.Name.Identifier.Last().Name;
+                                    var targetsignalname = stm.Name.Identifier.Last().Name;
+
+                                    // Verify that the name of the bus is correct
+                                    if (sourcebusname != sourcebus.SourceParameter.Name.Name)
+                                        throw new Exception($"Assignment in process for {sourcesignalname} is not reading from the input");
+                                    if (targetbusname != targetbus.SourceParameter.Name.Name)
+                                        throw new Exception($"Assignment in process for {targetsignalname} is not writing to the output");
+
+                                    // Find the instances being used, so we can name them correctly
+                                    var sourcebusinstance = (Instance.Bus)sourcebus.MappedItem;
+                                    var targetbusinstance = (Instance.Bus)targetbus.MappedItem;
+                                    
+                                    decl += RenderLines(state, 
+                                        $"{RenderSignalName(BusNames[targetbusinstance], targetsignalname)} <= {RenderSignalName(BusNames[sourcebusinstance], sourcesignalname)};"
+                                    );
+                                }
+                                else
+                                {
+                                    throw new Exception("Source of the assignment statement must be a name expression");
+                                }
+                            }
+                        }
+                    }
+
 
                     decl += RenderLines(state,
                         "",
@@ -1344,6 +1400,102 @@ namespace SMEIL.Parser.Codegen.VHDL
                 decl += RenderLines(state, "end RTL;");
                 return decl;
             }
+        }
+
+        /// <summary>
+        /// Create a graph where the non-rendered processes are removed 
+        /// and dependencies are rewired
+        /// </summary>
+        /// <returns>A directed acyclic graph</returns>
+        private Dictionary<Instance.Process, Instance.Process[]> BuildPrunedGraph()
+        {
+            // Start by figuring out what removed processes depends on
+            var removals = new Dictionary<Instance.Process, Instance.Process[]>();
+            foreach (var k in ValidationState.DependencyGraph)
+                if (!AllRenderedProcesses.Contains(k.Key))
+                    removals[k.Key] = k.Value.SelectMany(
+                        x => ValidationState.DependencyGraph[x]
+                    )
+                    .Distinct()
+                    .ToArray();
+
+            // We can have more than one layer of removed processes,
+            // so we repeat the roll-up until we have removed all
+            var changes = removals.Count > 0;
+            while(changes)
+            {
+                changes = false;
+                foreach (var k in removals)
+                {
+                    if (k.Value.Any(x => removals.ContainsKey(x)))
+                    {
+                        removals[k.Key] = k.Value.SelectMany(
+                            x =>
+                                removals.ContainsKey(x)
+                                ? removals[x]
+                                : new[] { x }
+                        )
+                        .Distinct()
+                        .ToArray();
+
+                        changes = true;
+                        break;
+                    }
+                }
+            }
+
+            // We now have a list of what each of the removed processes needs
+            // to be replaced by, so we build the graph from that
+            var graph = new Dictionary<Instance.Process, Instance.Process[]>();
+            foreach (var k in ValidationState.DependencyGraph)
+                if (!removals.ContainsKey(k.Key))
+                    graph[k.Key] = k.Value.SelectMany(
+                        x => removals.ContainsKey(x)
+                        ? removals[x]
+                        : new [] { x }
+                    )
+                    .ToArray();
+
+
+            return graph;
+        }
+
+        /// <summary>
+        /// Returns the leaf nodes from the given graph
+        /// </summary>
+        /// <param name="graph">The graph to evaluate</param>
+        /// <returns>The leaf nodes</returns>
+        public IEnumerable<Instance.Process> LeafProcesses(Dictionary<Instance.Process, Instance.Process[]> graph)
+        {
+            var ready = new HashSet<Instance.Process>();
+            var waves = new List<List<Instance.Process>>();
+            var waiting = graph.Keys.ToList();
+            if (waiting.Count == 0)
+                throw new ArgumentException("No processes to build the leafs from");
+
+            while(waiting.Count > 0)
+            {
+                var ec = waiting.Count;
+
+                var front = new List<Instance.Process>();
+                waves.Add(front);
+
+                for(var i = waiting.Count - 1; i >= 0; i--)
+                {
+                    var p = waiting[i];
+                    if (graph[p].All(x => ready.Contains(x)))
+                    {
+                        ready.Add(p);
+                        front.Add(p);
+                        waiting.RemoveAt(i);
+                    }
+                }
+
+                if (ec == waiting.Count)
+                    throw new Exception("Cyclic dependency in reduced graph");
+            }
+
+            return waves.Last();
         }
 
         /// <summary>
