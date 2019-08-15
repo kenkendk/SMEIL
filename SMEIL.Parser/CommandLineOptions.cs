@@ -413,7 +413,7 @@ namespace SMEIL.Parser.CommandLineOptions
         /// <param name="defaultvalue">The default if the value is empty</param>
         /// <param name="value">The value to parse</param>
         /// <returns>The object instance</returns>
-        private static object GetValue(Type targettype, object defaultvalue, string value)
+        public static object GetValue(Type targettype, object defaultvalue, string value)
         {
             try
             {

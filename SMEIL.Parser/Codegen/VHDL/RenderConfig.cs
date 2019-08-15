@@ -101,34 +101,34 @@ namespace SMEIL.Parser.Codegen.VHDL
     public class RenderConfig
     {
         /// <summary>
-        /// Enable this to use the VHDL 2008 features if the VHDL compiler supports it
+        /// Enable this to use VHDL 2008 features if the VHDL compiler supports it
         /// </summary>
-        public bool SUPPORTS_VHDL_2008 { get; private set; } = false;
+        public bool SUPPORTS_VHDL_2008 { get; set; } = false;
 
         /// <summary>
         /// Activates explicit selection of the IEEE_1164 concatenation operator
         /// </summary>
-        public bool USE_EXPLICIT_CONCATENATION_OPERATOR { get; private set; } = true;
+        public bool USE_EXPLICIT_CONCATENATION_OPERATOR { get; set; } = true;
 
         /// <summary>
         /// This makes the array lengths use explicit lengths instead of &quot;(x - 1)&quot;
         /// </summary>
-        public bool USE_EXPLICIT_LITERAL_ARRAY_LENGTH { get; private set; } = true;
+        public bool USE_EXPLICIT_LITERAL_ARRAY_LENGTH { get; set; } = true;
 
         /// <summary>
         /// This avoids emitting code with SLL and SRL, and uses shift_left() and shift_right() instead
         /// </summary>
-        public bool AVOID_SLL_AND_SRL { get; private set; } = true;
+        public bool AVOID_SLL_AND_SRL { get; set; } = true;
 
         /// <summary>
         /// Removes processes that are simply forwarding signals, which produces a smaller output project
         /// </summary>
-        public bool REMOVE_IDENTITY_PROCESSES = true;
+        public bool REMOVE_IDENTITY_PROCESSES { get; set; } = true;
 
         /// <summary>
         /// Avoids using the detected signal direction and uses the defined signal directions instead 
         /// </summary>
-        public bool USE_DEFINED_SIGNAL_DIRECTIONALITY { get; private set; } = false;
+        public bool USE_DEFINED_SIGNAL_DIRECTIONALITY { get; set; } = false;
         // TODO: Implement USE_DEFINED_SIGNAL_DIRECTIONALITY ?
 
         /// <summary>
@@ -146,11 +146,29 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// The target device
         /// </summary>
         /// <value>The target device.</value>
-        public FPGADevice TARGET_DEVICE { get; private set; } = FPGADevice.Zynq7000;
+        public FPGADevice TARGET_DEVICE { get; set; } = FPGADevice.Zynq7000;
 
         /// <summary>
         /// The rendering strategy
         /// </summary>
-        public ComponentRendererStrategy COMPONENT_RENDERER_STRATEGY { get; private set; } = ComponentRendererStrategy.Inferred;
+        public ComponentRendererStrategy COMPONENT_RENDERER_STRATEGY { get; set; } = ComponentRendererStrategy.Inferred;
+
+        /// <summary>
+        /// Creates a default version of the renderconfig, 
+        /// using environment variables to override the
+        /// default values
+        /// </summary>
+        public RenderConfig()
+        {
+            foreach (var p in this.GetType().GetProperties().Where(x => x.CanWrite))
+            {
+                var str = Environment.GetEnvironmentVariable(p.Name);
+                if (!string.IsNullOrWhiteSpace(str))
+                {
+                    try { p.SetValue(this, CommandLineOptions.CommandLineParser.GetValue(p.PropertyType, p.GetValue(this), str)); }
+                    catch { Console.WriteLine($"Warning: Cannot set {p.Name}={str}"); }
+                }
+            }
+        }
     }
 }
