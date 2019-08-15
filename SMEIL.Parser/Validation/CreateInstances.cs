@@ -80,7 +80,7 @@ namespace SMEIL.Parser.Validation
                     }
                     else if (sym != null && sym is AST.Process proc)
                     {
-                        var p = new Instance.Process(instDecl, proc);
+                        var p = new Instance.Process(instDecl, proc, Instance.ProcessType.Normal);
                         if (instDecl.Name.Name != null)
                             scope.SymbolTable.Add(instDecl.Name.Name.Name, p);
 
@@ -142,7 +142,8 @@ namespace SMEIL.Parser.Validation
                             null, 
                             null
                         )
-                    }
+                    },
+                    Instance.ProcessType.Connect
                 );
             }
             else if (lhs is Instance.Bus lhs_bus && rhs is Instance.Bus rhs_bus)
@@ -169,7 +170,8 @@ namespace SMEIL.Parser.Validation
                     connEntry.Source.AsExpression(),
                     connEntry.Target.AsExpression(),
                     shared_shape,
-                    shared_shape
+                    shared_shape,
+                    Instance.ProcessType.Connect
                 );
             }
             else
@@ -186,8 +188,9 @@ namespace SMEIL.Parser.Validation
         /// <param name="output">The output expression, must refer to a bus instance</param>
         /// <param name="inputshape">The input shape</param>
         /// <param name="outputshape">The output shape</param>
-        /// <returns></returns>
-        private Instance.Process CreateIdentityProcess(ValidationState state, ScopeState scope, ParseToken sourceToken, Expression input, Expression output, BusSignalDeclaration[] inputshape, BusSignalDeclaration[] outputshape)
+        /// <param name="type">The the type of identity process to create</param>
+        /// <returns>A dynamically instantiated process</returns>
+        private Instance.Process CreateIdentityProcess(ValidationState state, ScopeState scope, ParseToken sourceToken, Expression input, Expression output, BusSignalDeclaration[] inputshape, BusSignalDeclaration[] outputshape, Instance.ProcessType type)
         {
             var pt_in = new ParseToken(0, 0, 0, "in");
             var pt_out = new ParseToken(0, 0, 0, "out");
@@ -266,7 +269,9 @@ namespace SMEIL.Parser.Validation
                             );
                         })
                     .ToArray()
-                )
+                ),
+
+                Instance.ProcessType.Connect
             );
         }
 
