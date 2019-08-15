@@ -299,8 +299,9 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <param name="state">The render state</param>
         /// <param name="filenames">The filenames assigned to the processes</param>
         /// <param name="standard">The VHDL standard to use</param>
+        /// <param name="extension">The extensions to use for VHDL files</param>
         /// <returns>The generated Makefile</returns>
-        public string GenerateMakefile(RenderState state, Dictionary<Instance.Process, string> filenames, string standard)
+        public string GenerateMakefile(RenderState state, Dictionary<Instance.Process, string> filenames, string standard, string extension = "vhdl")
         {
             var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
             var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
@@ -345,16 +346,16 @@ namespace SMEIL.Parser.Codegen.VHDL
                 "$(WORKDIR):",
                 "\tmkdir $(WORKDIR)",
                 "",
-                $"$(WORKDIR)/customtypes.o: customtypes.vhdl $(WORKDIR)",
-                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) customtypes.vhdl",
+                $"$(WORKDIR)/customtypes.o: customtypes.{extension} $(WORKDIR)",
+                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) customtypes.{extension}",
                 ""
             );
 
             foreach (var file in filenames.Values)
             {
                 decl += RenderLines(state,
-                    $"$(WORKDIR)/{file}.o: {file}.vhdl $(WORKDIR)/customtypes.o $(WORKDIR){cust_tag}",
-                    $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) {file}.vhdl",
+                    $"$(WORKDIR)/{file}.o: {file}.{extension} $(WORKDIR)/customtypes.o $(WORKDIR){cust_tag}",
+                    $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) {file}.{extension}",
                     ""
                 );
                 
@@ -372,17 +373,17 @@ namespace SMEIL.Parser.Codegen.VHDL
             }
 
             decl += RenderLines(state,
-                $"$(WORKDIR)/toplevel.o: toplevel.vhdl $(WORKDIR)/customtypes.o {string.Join(" ", filenames.Values.Select(x => $"$(WORKDIR)/{x}.o"))}{cust_tag}",
-                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) toplevel.vhdl",
+                $"$(WORKDIR)/toplevel.o: toplevel.{extension} $(WORKDIR)/customtypes.o {string.Join(" ", filenames.Values.Select(x => $"$(WORKDIR)/{x}.o"))}{cust_tag}",
+                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) toplevel.{extension}",
                 "",
-                $"$(WORKDIR)/testbench.o: testbench.vhdl $(WORKDIR)/toplevel.o",
-                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) testbench.vhdl",
+                $"$(WORKDIR)/testbench.o: testbench.{extension} $(WORKDIR)/toplevel.o",
+                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) testbench.{extension}",
                 "",
                 $"{name}_tb: $(WORKDIR)/testbench.o",
                 $"\tghdl -e --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) {name}_tb",
                 "",
                 $"export: $(WORKDIR)/toplevel.o",
-                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) export.vhdl",
+                $"\tghdl -a --std=$(STD) --ieee=$(IEEE) --workdir=$(WORKDIR) export.{extension}",
                 "",
                 $"test: {name}_tb",
                 $"\tcp \"{CSVTracename}\" .",
@@ -802,8 +803,9 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// </summary>
         /// <param name="state">The render state</param>
         /// <param name="filenames">The filenames assigned to the processes</param>
+        /// <param name="extension">The file extensions to use</param>
         /// <returns>The generated xpf file</returns>
-        public string GenerateXpf(RenderState state, Dictionary<Instance.Process, string> filenames)
+        public string GenerateXpf(RenderState state, Dictionary<Instance.Process, string> filenames, string extension = "vhdl")
         {
             var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
             var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
@@ -865,7 +867,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                 "  <FileSets Version=\"1\" Minor=\"31\">",
                 "    <FileSet Name=\"sources_1\" Type=\"DesignSrcs\" RelSrcDir=\"$PSRCDIR/sources_1\">",
                 "      <Filter Type=\"Srcs\"/>",
-                "      <File Path=\"$PPRDIR/system_types.vhdl\">",
+                $"      <File Path=\"$PPRDIR/system_types.{extension}\">",
                 "        <FileInfo>",
                 "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
                 "          <Attr Name=\"IsGlobalInclude\" Val=\"1\"/>",
@@ -886,7 +888,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             foreach (var file in filenames.Values)
             {
                 decl += RenderLines(state,
-                    $"      <File Path=\"$PPRDIR/{file}.vhdl\">",
+                    $"      <File Path=\"$PPRDIR/{file}.{extension}\">",
                     "        <FileInfo>",
                     "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
                     "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
@@ -897,7 +899,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             }
 
             decl += RenderLines(state,
-                $"      <File Path=\"$PPRDIR/{name}.vhdl\">",
+                $"      <File Path=\"$PPRDIR/{name}.{extension}\">",
                 "        <FileInfo>",
                 "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
                 "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
@@ -918,14 +920,14 @@ namespace SMEIL.Parser.Codegen.VHDL
                 "    </FileSet>",
                 "    <FileSet Name=\"sim_1\" Type=\"SimulationSrcs\" RelSrcDir=\"$PSRCDIR/sim_1\">",
                 "      <Filter Type=\"Srcs\"/>",
-                "      <File Path=\"$PPRDIR/csv_util.vhdl\">",
+                "      <File Path=\"$PPRDIR/csv_util.{extension}\">",
                 "        <FileInfo>",
                 "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
                 "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
                 "          <Attr Name=\"UsedIn\" Val=\"simulation\"/>",
                 "        </FileInfo>",
                 "      </File>",
-                $"      <File Path=\"$PPRDIR/TestBench_{name}.vhdl\">",
+                $"      <File Path=\"$PPRDIR/TestBench_{name}.{extension}\">",
                 "        <FileInfo>",
                 "          <Attr Name=\"Library\" Val=\"xil_defaultlib\"/>",
                 "          <Attr Name=\"UsedIn\" Val=\"synthesis\"/>",
