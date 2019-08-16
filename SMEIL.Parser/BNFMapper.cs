@@ -335,7 +335,7 @@ namespace SMEIL.Parser
                     x.FirstMapper(expression),
                     x.FindSubMatch(0, 5).InvokeMappers(statement).ToArray(),
                     x.FindSubMatch(0, 7).InvokeMappers(elifBlock).ToArray(),
-                    x.FindSubMatch(0, 8).FirstMapper(elseBlock)
+                    x.FindSubMatch(0, 8).FirstOrDefaultMapper(elseBlock)
                 )
             );
 
