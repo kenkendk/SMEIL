@@ -131,49 +131,59 @@ namespace SMEIL.Parser.Validation
                             throw new ParserException($"Cannot perform boolean operation {binaryExpression.Operation.Operation} on types {leftType} and {rightType}", binaryExpression);
                     }
 
-                    // Make sure we can unify the types
-                    if (!state.CanUnifyTypes(leftType, rightType, scope))
-                        throw new ParserException($"The types types {leftType} and {rightType} cannot be unified for use with the operation {binaryExpression.Operation.Operation}", binaryExpression);
-
-                    // Compute the unified type
-                    var unified = state.UnifiedType(leftType, rightType, scope);
-
-                    // If the source operands do not have the unified types, inject an implicit type-cast
-                    if (!object.Equals(leftType, unified))
-                        instance.AssignedTypes[binaryExpression.Left = new AST.TypeCast(binaryExpression.Left, unified, false)] = unified;
-                    if (!object.Equals(rightType, unified))
-                        instance.AssignedTypes[binaryExpression.Right = new AST.TypeCast(binaryExpression.Right, unified, false)] = unified;
-
-                    // Assign the type to this operation
-                    switch (binaryExpression.Operation.Operation)
+                    // Special handling of bitshift, where the type of the shift count does not change they type on the input
+                    if (binaryExpression.Operation.Operation == BinOp.ShiftLeft || binaryExpression.Operation.Operation == BinOp.ShiftRight)
                     {
-                        // These operations just use the unified type
-                        case BinOp.Add:
-                        case BinOp.Subtract:
-                        case BinOp.Multiply:
-                        case BinOp.Modulo:
-                        case BinOp.BitwiseAnd:
-                        case BinOp.BitwiseOr:
-                        case BinOp.BitwiseXor:
-                        case BinOp.ShiftLeft:
-                        case BinOp.ShiftRight:
-                            instance.AssignedTypes[binaryExpression] = unified;
-                            break;
+                        if (!leftType.IsInteger)
+                            throw new ParserException($"The value being shifted must be an integer type but has type {leftType}", binaryExpression.Left);
+                        if (!rightType.IsInteger)
+                            throw new ParserException($"The shift operand must be an integer type but has type {rightType}", binaryExpression.Right);
+                        instance.AssignedTypes[binaryExpression] = leftType;                        
+                    }
+                    else
+                    {
+                        // Make sure we can unify the types
+                        if (!state.CanUnifyTypes(leftType, rightType, scope))
+                            throw new ParserException($"The types types {leftType} and {rightType} cannot be unified for use with the operation {binaryExpression.Operation.Operation}", binaryExpression);
 
-                        // These operations return a boolean result
-                        case BinOp.Equal:
-                        case BinOp.NotEqual:
-                        case BinOp.LessThan:
-                        case BinOp.LessThanOrEqual:
-                        case BinOp.GreaterThan:
-                        case BinOp.GreaterThanOrEqual:
-                        case BinOp.LogicalAnd:
-                        case BinOp.LogicalOr:
-                            instance.AssignedTypes[binaryExpression] = new AST.DataType(binaryExpression.SourceToken, ILType.Bool, 1);
-                            break;
+                        // Compute the unified type
+                        var unified = state.UnifiedType(leftType, rightType, scope);
 
-                        default:
-                            throw new ParserException($"Unable to handle operation: {binaryExpression.Operation.Operation}", binaryExpression);
+                        // If the source operands do not have the unified types, inject an implicit type-cast
+                        if (!object.Equals(leftType, unified))
+                            instance.AssignedTypes[binaryExpression.Left = new AST.TypeCast(binaryExpression.Left, unified, false)] = unified;
+                        if (!object.Equals(rightType, unified))
+                            instance.AssignedTypes[binaryExpression.Right = new AST.TypeCast(binaryExpression.Right, unified, false)] = unified;
+
+                        // Assign the type to this operation
+                        switch (binaryExpression.Operation.Operation)
+                        {
+                            // These operations just use the unified type
+                            case BinOp.Add:
+                            case BinOp.Subtract:
+                            case BinOp.Multiply:
+                            case BinOp.Modulo:
+                            case BinOp.BitwiseAnd:
+                            case BinOp.BitwiseOr:
+                            case BinOp.BitwiseXor:
+                                instance.AssignedTypes[binaryExpression] = unified;
+                                break;
+
+                            // These operations return a boolean result
+                            case BinOp.Equal:
+                            case BinOp.NotEqual:
+                            case BinOp.LessThan:
+                            case BinOp.LessThanOrEqual:
+                            case BinOp.GreaterThan:
+                            case BinOp.GreaterThanOrEqual:
+                            case BinOp.LogicalAnd:
+                            case BinOp.LogicalOr:
+                                instance.AssignedTypes[binaryExpression] = new AST.DataType(binaryExpression.SourceToken, ILType.Bool, 1);
+                                break;
+
+                            default:
+                                throw new ParserException($"Unable to handle operation: {binaryExpression.Operation.Operation}", binaryExpression);
+                        }
                     }
                 }
                 else if (item.Current is AST.TypeCast typecastExpression)
