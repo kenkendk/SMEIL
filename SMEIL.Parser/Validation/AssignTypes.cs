@@ -155,6 +155,8 @@ namespace SMEIL.Parser.Validation
                         case BinOp.BitwiseAnd:
                         case BinOp.BitwiseOr:
                         case BinOp.BitwiseXor:
+                        case BinOp.ShiftLeft:
+                        case BinOp.ShiftRight:
                             instance.AssignedTypes[binaryExpression] = unified;
                             break;
 
