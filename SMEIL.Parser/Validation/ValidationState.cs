@@ -396,7 +396,7 @@ namespace SMEIL.Parser.Validation
                     // This should only fail for the very first item, as the others will fail the check above
                     // and go to the exception message below
                     if (!scope.TypedefinitionTable.TryGetValue(id.Name, out res))
-                        throw new ParserException($"Failed to locate \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", id);
+                        throw new ParserException($"Failed to locate type \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", id);
 
                     if (res == null)
                         throw new ParserException($"Null value in symbol table for \"{id.Name}\" in sequence {string.Join(".", name.Identifier.Select(x => x.Name))}", id);
