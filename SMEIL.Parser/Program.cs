@@ -80,15 +80,6 @@ namespace SMEIL.Parser
 
         public static void RunCompiler(Options options)
         {
-            if (options.GHDLStandard != "93" && options.GHDLStandard != "93c")
-                throw new ParserException("Only 93 and 93c are currently supported", null);
-
-            if (options.CreateAocFiles && options.VHDLFileExtensions != "vhd")
-            {
-                Console.WriteLine("Warning: Forcing the file extensions to \"vhd\" when creating aoc support files ");
-                options.VHDLFileExtensions = "vhd";
-            }
-
             var state = Loader.LoadModuleAndImports(options.EntryFile, options.TopLevelNetwork, options.Arguments);
             state.Validate();
 

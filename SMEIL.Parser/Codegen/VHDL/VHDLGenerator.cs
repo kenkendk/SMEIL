@@ -262,7 +262,12 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>The lines</returns>
         private static string RenderLines(RenderState state, IEnumerable<string> lines)
         {
-            return string.Join(Environment.NewLine, lines.Select(x => (state.Indent + x).TrimEnd())) + Environment.NewLine;
+            return string.Join(
+                Environment.NewLine, 
+                lines
+                    .Where(x => x != null)
+                    .Select(x => (state.Indent + x).TrimEnd())
+            ) + Environment.NewLine;
         }
 
         
@@ -572,9 +577,9 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                     decl += RenderLines(state,
                         " -- Control signals",
-                        "ENB => ENABLE,",
-                        "RST => RESET,",
-                        "CLK => CLOCK"
+                        $"{Config.ENABLE_SIGNAL_NAME} => ENABLE,",
+                        $"{Config.RESET_SIGNAL_NAME} => RESET,",
+                        $"{Config.CLOCK_SIGNAL_NAME} => CLOCK"
                     );
 
                 }
@@ -799,7 +804,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
-        /// Creates a Xilinx Vivado .xpf for testing the generated code with GHDL
+        /// Creates a Xilinx Vivado .xpf for testing and sythesizing the generated VHDL output with Xilinx Vivado
         /// </summary>
         /// <param name="state">The render state</param>
         /// <param name="filenames">The filenames assigned to the processes</param>
@@ -1043,18 +1048,27 @@ namespace SMEIL.Parser.Codegen.VHDL
                             "-- User defined signals here",
                             "-- #### USER-DATA-ENTITYSIGNALS-START",
                             "-- #### USER-DATA-ENTITYSIGNALS-END",
-                            "",
-                            "-- Enable signal",
-                            "ENB: in STD_LOGIC;",
-                            "",
+                            ""
+                        );
+
+                        if (!Config.REMOVE_ENABLE_FLAGS)
+                        {
+                            decl += RenderLines(state,
+                                "-- Enable signal",
+                                $"{Config.ENABLE_SIGNAL_NAME}: in STD_LOGIC;",
+                                ""
+                            );
+                        }
+
+                        decl += RenderLines(state,
                             "--Reset signal",
-                            "RST : in STD_LOGIC;",
+                            $"{Config.RESET_SIGNAL_NAME} : in STD_LOGIC;",
                             "",
                             "--Finished signal",
                             "FIN : out STD_LOGIC;",
                             "",
                             "--Clock signal",
-                            "CLK : in STD_LOGIC"
+                            $"{Config.CLOCK_SIGNAL_NAME} : in STD_LOGIC"
                         );
                     }
 
@@ -1118,10 +1132,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                             );
 
                         decl += RenderLines(state,
-                            "ENB => ENB,",
-                            "RST => RST,",
+                            $"{Config.ENABLE_SIGNAL_NAME} => {(Config.REMOVE_ENABLE_FLAGS ? "'1'" : Config.ENABLE_SIGNAL_NAME)},",
+                            $"{Config.RESET_SIGNAL_NAME} => {Config.RESET_SIGNAL_NAME},",
                             "FIN => FIN,",
-                            "CLK => CLK"
+                            $"{Config.CLOCK_SIGNAL_NAME} => {Config.CLOCK_SIGNAL_NAME}"
                         );
                     }
 
@@ -1199,16 +1213,16 @@ namespace SMEIL.Parser.Codegen.VHDL
                             "-- #### USER-DATA-ENTITYSIGNALS-END",
                             "",
                             "-- Enable signal",
-                            "ENB: in STD_LOGIC;",
+                            $"{Config.ENABLE_SIGNAL_NAME}: in STD_LOGIC;",
                             "",
                             "--Finished signal",
                             "FIN : out STD_LOGIC;",
                             "",
                             "--Reset signal",
-                            "RST : in STD_LOGIC;",
+                            $"{Config.RESET_SIGNAL_NAME} : in STD_LOGIC;",
                             "",
                             "--Clock signal",
-                            "CLK : in STD_LOGIC"
+                            $"{Config.CLOCK_SIGNAL_NAME} : in STD_LOGIC"
                         );
                     }
 
@@ -1374,13 +1388,13 @@ namespace SMEIL.Parser.Codegen.VHDL
                     decl += RenderLines(state,
                         "",
                         "-- Propagate all clocked and feedback signals",
-                        "process(CLK, RST)",
+                        $"process({Config.CLOCK_SIGNAL_NAME}, {Config.RESET_SIGNAL_NAME})",
                         "begin",
-                        "    if RST = '1' then",
+                        $"    if {Config.RESET_SIGNAL_NAME} = '1' then",
                         "        RDY <= '0';",
                         "        readyflag <= '1';",
-                        "    elsif rising_edge(CLK) then",
-                        "        if ENB = '1' then",
+                        $"    elsif rising_edge({Config.CLOCK_SIGNAL_NAME}) then",
+                        $"        if {Config.ENABLE_SIGNAL_NAME} = '1' then",
                         "            RDY <= not readyflag;",
                         "            readyflag <= not readyflag;",
                         "        end if;",
@@ -1560,11 +1574,11 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                 decl += RenderLines(state,
                     $"-- Control signals",
-                    $"CLK => CLK,",
+                    $"{Config.CLOCK_SIGNAL_NAME} => {Config.CLOCK_SIGNAL_NAME},",
                     $"RDY => RDY_{ProcessNames[proc]},",
                     $"FIN => FIN_{ProcessNames[proc]},",
-                    $"ENB => ENB,",
-                    $"RST => RST"
+                    $"{Config.ENABLE_SIGNAL_NAME} => {Config.ENABLE_SIGNAL_NAME},",
+                    $"{Config.RESET_SIGNAL_NAME} => RST"
                 );
             }
 
@@ -1720,7 +1734,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                             "-- #### USER-DATA-ENTITYSIGNALS-END",
                             "",
                             "-- Clock signal",
-                            "CLK : in STD_LOGIC;",
+                            $"{Config.CLOCK_SIGNAL_NAME} : in STD_LOGIC;",
                             "",
                             "--Ready signal",
                             "RDY : in STD_LOGIC;",
@@ -1729,10 +1743,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                             "FIN : out STD_LOGIC;",
                             "",
                             "--Enable signal",
-                            "ENB : in STD_LOGIC;",
+                            $"{Config.ENABLE_SIGNAL_NAME} : in STD_LOGIC;",
                             "",
                             "--Reset signal",
-                            "RST : in STD_LOGIC"
+                            $"{Config.RESET_SIGNAL_NAME} : in STD_LOGIC"
                         );
                     }
                     decl += RenderLines(state, ");");
@@ -1773,7 +1787,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                             "-- #### USER-DATA-SENSITIVITY-END",
                             "",
                             "RDY,",
-                            "RST",
+                            $"{Config.RESET_SIGNAL_NAME}",
                             ""
                         );
                     }
@@ -1814,7 +1828,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                             ""
                         );
 
-                        impl += RenderLines (state, $"if RST = '1' then");
+                        impl += RenderLines (state, $"if {Config.RESET_SIGNAL_NAME} = '1' then");
 
                         using(state.Indenter())
                         {

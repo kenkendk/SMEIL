@@ -18,6 +18,9 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <param name="options">The options for creating the code</param>
         public static void CreateFiles(Validation.ValidationState state, string outputfolder, Program.Options options)
         {
+            if (options.GHDLStandard != "93" && options.GHDLStandard != "93c")
+                throw new ParserException("Only 93 and 93c are currently supported", null);
+            
             var vhdlout = Path.GetFullPath(Path.Combine(outputfolder, options.VHDLOutputFolder));
             if (options.ClearTargetFolder && Directory.Exists(vhdlout))
             {
@@ -29,7 +32,17 @@ namespace SMEIL.Parser.Codegen.VHDL
             if (!Directory.Exists(vhdlout))
                 Directory.CreateDirectory(vhdlout);
 
-            var generator = new Codegen.VHDL.VHDLGenerator(state)
+            var config = new RenderConfig();
+            if (options.CreateAocFiles)
+            {
+                Console.WriteLine("Note: aoc file generation activated, forcing options to be compatible with aoc output");
+                config.REMOVE_ENABLE_FLAGS = true;
+                config.RESET_SIGNAL_NAME = "resetn";
+                config.CLOCK_SIGNAL_NAME = "clock";
+                options.VHDLFileExtensions = "vhd";
+            }
+
+            var generator = new Codegen.VHDL.VHDLGenerator(state, config)
             {
                 CSVTracename = options.TraceFile,
                 Ticks = File.Exists(options.TraceFile) ? File.ReadAllLines(options.TraceFile).Count() + 2 : 100,
@@ -56,7 +69,6 @@ namespace SMEIL.Parser.Codegen.VHDL
                 var doc = generator.GenerateProcess(rs, p);
                 var fn = filenames[p] = generator.ProcessNames[p];
                 File.WriteAllText(Path.Combine(vhdlout, Path.ChangeExtension(fn + ".vhdl", options.VHDLFileExtensions)), doc);
-                //Console.WriteLine(doc);
             }
 
             if (options.CreateXpf)

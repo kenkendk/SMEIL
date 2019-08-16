@@ -126,6 +126,26 @@ namespace SMEIL.Parser.Codegen.VHDL
         public bool REMOVE_IDENTITY_PROCESSES { get; set; } = true;
 
         /// <summary>
+        /// Removes the generation of the top-level ENB flags
+        /// </summary>
+        public bool REMOVE_ENABLE_FLAGS { get; set; } = true;
+
+        /// <summary>
+        /// The name of the top-level clock signal
+        /// </summary>
+        public string CLOCK_SIGNAL_NAME { get; set; } = "CLK";
+
+        /// <summary>
+        /// The name of the top-level enable signal
+        /// </summary>
+        public string ENABLE_SIGNAL_NAME { get; set; } = "ENB";
+
+        /// <summary>
+        /// The name of the top-level reset signal
+        /// </summary>
+        public string RESET_SIGNAL_NAME { get; set; } = "RST";
+
+        /// <summary>
         /// Avoids using the detected signal direction and uses the defined signal directions instead 
         /// </summary>
         public bool USE_DEFINED_SIGNAL_DIRECTIONALITY { get; set; } = false;
@@ -162,7 +182,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         {
             foreach (var p in this.GetType().GetProperties().Where(x => x.CanWrite))
             {
-                var str = Environment.GetEnvironmentVariable(p.Name);
+                var str = Environment.GetEnvironmentVariable("SMEIL_" + p.Name);
                 if (!string.IsNullOrWhiteSpace(str))
                 {
                     try { p.SetValue(this, CommandLineOptions.CommandLineParser.GetValue(p.PropertyType, p.GetValue(this), str)); }
