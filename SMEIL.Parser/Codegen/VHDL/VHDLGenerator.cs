@@ -1007,6 +1007,107 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
+        /// Creates an XML file for use with Altera/Intel OpenCL
+        /// </summary>
+        /// <param name="state">The render state</param>
+        /// <param name="filenames">The filenames assigned to the processes</param>
+        /// <param name="extension">The file extensions to use</param>
+        /// <returns>The generated xml file</returns>
+        public string GenerateAocl(RenderState state, Dictionary<Instance.Process, string> filenames, string extension = "vhdl")
+        {
+            var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
+            var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+
+
+            // TODO: These options must be provided by the user
+            var decl = RenderLines(state, 
+                "<RTL_SPEC>",
+                "  <!-- 'name' is how this function will be called from an OpenCL kernel.",
+                "       'module' is the top-level HDL module name that implements the function. -->",
+                $"  <FUNCTION name=\"sme_{name.ToLowerInvariant()}\" module=\"{name}\">",
+                "    <ATTRIBUTES>",
+                "      <!-- Setting IS_STALL_FREE=\"yes\" means the function neither generates stalls internally nor can it ",
+                "           properly handle incoming stalls (because it simply ignores its stall/valid inputs). If set",
+                "           to \"no\", the function must properly handle stall/valid signals. ",
+                "           IS_STALL_FREE=\"yes\" requires IS_FIXED_LATENCY=\"yes\". -->",
+                "      <IS_STALL_FREE value=\"yes\"/>",
+                "",
+                "      <!-- If the function always takes known number of clock cycles (specified by EXPECTED_LATENCY)",
+                "           to compute its output, set IS_FIXED_LATENCY to \"yes\".",
+                "           Note that IS_FIXED_LATENCY could be \"yes\" while IS_STALL_FREE=\"no\". Such a function would",
+                "           produce its output in fixed number of cycles but could still deal with stall signals ",
+                "           properly.  -->",
+                "      <IS_FIXED_LATENCY value=\"yes\"/>",
+                "",
+                "      <!-- Expected latency of this function. If IS_FIXED_LATENCY=\"yes\", this is the number of ",
+                "           pipeline stages inside the function. In this case, EXPECTED_LATENCY must be set exactly",
+                "           to the latency of the function, otherwise incorrect hardware will result.",
+                "           For variable latency functions, pipeline around this function will be balanced to this ",
+                "           value. Setting EXPECTED_LATENCY to a different value will still produce correct results",
+                "           but may affect number of stalls inside the pipeline. -->",
+                "      <EXPECTED_LATENCY value=\"1\"/>",
+                "",
+                "      <!-- Number of multiple inputs that can be processed simultaneously by this function.",
+                "           If IS_STALL_FREE=\"no\" and IS_FIXED_LATENCY=\"no\", the CAPACITY value must be specified.",
+                "           Otherwise, it is not required.",
+                "           If CAPACITY is strictly less than EXPECTED_LATENCY, the compiler will automatically ",
+                "           insert capacity-balancing FIFOs after this function when required. -->",
+                "      <CAPACITY value=\"1\"/>",
+                "",
+                "      <!-- Set to \"yes\" to indicate that this function has side-effects. Calls to functions",
+                "           with side-effects will not be optimized away and only valid data will be fed",
+                "           to such functions.",
+                "           Functions that have internal state or talk to external memories are examples of functions",
+                "           with side-effects. -->",
+                "      <HAS_SIDE_EFFECTS value=\"no\"/>",
+                "",
+                "      <!-- Set to \"yes\" to allow multiple instances of this function to be merged by the compiler.",
+                "           This property should be set to \"yes\". ",
+                "           Note that marking function with HAS_SIDE_EFFECTS does not prevent merging. -->",
+                "      <ALLOW_MERGING value=\"yes\"/>",
+                "    </ATTRIBUTES>",
+                "    <INTERFACE>",
+                $"      <AVALON port=\"{Config.CLOCK_SIGNAL_NAME}\" type=\"clock\"/>",
+                $"      <AVALON port=\"{Config.RESET_SIGNAL_NAME}\" type=\"resetn\"/>"
+            );
+
+            // TODO: we need to know which busses implement the protocol
+            decl += RenderLines(state,
+                "      <AVALON port=\"ILiteAvalonInput_InputValid\" type=\"ivalid\"/>",
+                "      <AVALON port=\"ILiteAvalonInput_InputReady\" type=\"iready\"/>",
+                "      <AVALON port=\"ILiteAvalonOutput_OutputValid\" type=\"ovalid\"/>",
+                "      <AVALON port=\"ILiteAvalonOutput_OutputReady\" type=\"oready\"/>",
+                "      <INPUT  port=\"ILiteAvalonInput_Value\" width=\"32\"/>",
+                "      <OUTPUT port=\"ILiteAvalonOutput_Value\" width=\"32\"/>"
+            );
+
+            decl += RenderLines(state,
+                "    </INTERFACE>",
+                "    <C_MODEL>",
+                "      <FILE name=\"c_model.cl\" />",
+                "    </C_MODEL>",
+                "    <REQUIREMENTS>"
+            );
+
+            foreach (var file in filenames.Values)
+            {
+                decl += RenderLines(state,
+                    $"      <FILE name=\"./{file}.{extension}\" />"
+                );
+            }
+
+            decl += RenderLines(state,
+                "    </REQUIREMENTS>",
+                "  </FUNCTION>",
+                "</RTL_SPEC>",
+                ""
+            );
+
+            return decl;
+        }
+
+
+        /// <summary>
         /// Returns a VHDL representation of a network
         /// </summary>
         /// <param name="state">The render stater</param>

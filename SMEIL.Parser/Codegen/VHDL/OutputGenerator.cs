@@ -79,7 +79,8 @@ namespace SMEIL.Parser.Codegen.VHDL
 
             if (options.CreateAocFiles)
             {
-                Console.WriteLine("Aoc output is not yet supported...");
+                var aoclproj = generator.GenerateAocl(rs, filenames, options.VHDLFileExtensions);
+                File.WriteAllText(Path.Combine(vhdlout, $"opencl_lib.xml"), aoclproj);
             }
 
             var makefile = generator.GenerateMakefile(rs, filenames, options.GHDLStandard, options.VHDLFileExtensions);
