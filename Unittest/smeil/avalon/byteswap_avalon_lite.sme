@@ -1,0 +1,48 @@
+// This is a test function used to test the parser and code generator,
+// it does not work correctly
+
+type avlite: {
+    ready: bool;
+    valid: bool;
+    value: u32;
+};
+
+
+proc byteswap(in in, out out: avlite)
+    var value_ready : bool = false;
+{
+    // Check if we are waiting to send a value
+    if (value_ready)
+    {
+        // If we are waiting, keep waiting until we have sent it
+        if (in.ready)
+        {
+            // The output has been consumed
+            out.valid = false;
+            
+            // We can read again
+            value_ready = false;
+            in.ready = true;
+        }
+    }
+    else
+    {
+        // Keep waiting until we get a value
+        if (in.valid)
+        {
+            // Output the value
+            out.value = in.value << 16 | in.value >> 16;
+            // Signal that it can be read
+            out.valid = true;
+
+            // See if we need to block in next cycle
+            value_ready = out.ready;
+            // We can read again, if this value is consumed
+            in.ready = in.ready;
+        }
+    }    
+}
+
+network main (in source: avlite, out target: avlite) {
+    instance _ of byteswap(source, target);    
+}

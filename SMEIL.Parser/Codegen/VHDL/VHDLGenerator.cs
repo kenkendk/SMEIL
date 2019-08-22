@@ -524,7 +524,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     "signal CLOCK : Std_logic;",
                     "signal StopClock : BOOLEAN;",
                     "signal RESET : Std_logic;",
-                    "signal ENABLE : Std_logic;",
+                    "signal ENABLE : BOOLEAN;",
                     ""
                 );
 
@@ -669,10 +669,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                             "",
                             "-- Reset the system before testing",
                             "RESET <= '1';",
-                            "ENABLE <= '0';",
+                            "ENABLE <= FALSE;",
                             "wait for 5 NS;",
                             "RESET <= '0';",
-                            "ENABLE <= '1';",
+                            "ENABLE <= TRUE;",
                             "",
                             "-- Read a line each clock",
                             "while not ENDFILE(F) loop"
@@ -1222,7 +1222,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                         "",
                         "pure function FROM_STD_LOGIC(src: STD_LOGIC) return BOOLEAN is",
                         "begin",
-                        "  return src == '1'",
+                        "  return src = '1';",
                         "end function FROM_STD_LOGIC;",
                         ""
                     );
@@ -2174,7 +2174,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             var busname = parmap == null ? bus.Name : parmap.LocalName;
 
             // TODO: The signal names here are not reflected in code....
-            
+
             // Normally signals are in or out
             var signals = 
                 bus
