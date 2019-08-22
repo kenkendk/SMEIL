@@ -16,6 +16,16 @@ namespace SMEIL.Parser.BNF
         public static implicit operator BNFItem(string value) { return new Literal(value); }
 
         /// <summary>
+        /// Flag used to toggle some tracing output from the BNF to STDOUT
+        /// </summary>
+        public static bool DEBUG_BNF_OUTPUT = false;
+
+        /// <summary>
+        /// Flag used to deactivate the infinite recursion detection for the BNF
+        /// </summary>
+        public static bool DISABLE_INFINITE_RECURSION_DETECTION = true;
+
+        /// <summary>
         /// Performs a match on a sequence
         /// </summary>
         /// <param name="enumerator">The sequence of items</param>
@@ -37,23 +47,53 @@ namespace SMEIL.Parser.BNF
         /// <returns>A match or <c>null</c></returns>
         public virtual Match Match(IBufferedEnumerator<ParseToken> enumerator)
         {
-            return DoMatch(enumerator, new List<Match>());
+            return DoProtectedMatch(enumerator, new List<Match>());
+        }
+
+        /// <summary>
+        /// Performs a match that guards against infinite recursion
+        /// </summary>
+        /// <param name="enumerator">The enumerator to use</param>
+        /// <param name="visited">The visited items</param>
+        /// <returns>The match</returns>
+        protected virtual Match DoProtectedMatch(IBufferedEnumerator<ParseToken> enumerator, List<Match> visited)
+        {
+            // Use this statment to debug where tokens are matched with the BNF
+            
+            if (DEBUG_BNF_OUTPUT)
+                Console.WriteLine("Trying: {1} with {0}", this.BuildString(new HashSet<BNFItem>(), 1), enumerator.Current);
+
+            // Quick return, if we do not need the recursion guards
+            if (DISABLE_INFINITE_RECURSION_DETECTION)
+                return DoUnprotectedMatch(enumerator, visited);
+
+            var start = enumerator.Current;
+
+            // Prevent infinite recursion
+            if (visited.Count(x => x.Token == this && object.Equals(x.Item, start)) > 3)
+                return new Match(this, start, new BNF.Match[0], false);
+
+            visited.Add(new BNF.Match(this, start, null, false));
+            var res = DoUnprotectedMatch(enumerator, visited);
+            visited.RemoveAt(visited.Count - 1);
+
+            return res;
         }
 
         /// <summary>
         /// Performs a match on a sequence
         /// </summary>
         /// <param name="enumerator">The sequence of items</param>
+        /// <param name="visited">The visited items</param>
         /// <returns>A match or <c>null</c></returns>
-        protected virtual Match DoMatch(IBufferedEnumerator<ParseToken> enumerator, List<Match> choices)
+        protected virtual Match DoUnprotectedMatch(IBufferedEnumerator<ParseToken> enumerator, List<Match> visited)
         {
-            //Console.WriteLine("Trying: {1} with {0}", this.BuildString(new HashSet<BNFItem>(), 1), enumerator.Current);
-
             if (enumerator.Empty)
                 return new Match(this, default(ParseToken), new Match[0], false);
 
             var start = enumerator.Current;
             var text = start.Text;
+
 
             if (this is Literal literalToken)
             {
@@ -81,12 +121,13 @@ namespace SMEIL.Parser.BNF
             }
             else if (this is Composite compositeToken)
             {
+
                 enumerator.Snapshot();
                 var subItems = new List<Match>();
 
                 foreach (var n in compositeToken.Items)
                 {
-                    var s = n.DoMatch(enumerator, choices);
+                    var s = n.DoProtectedMatch(enumerator, visited);
                     subItems.Add(s);
 
                     if (!s.Matched)
@@ -100,25 +141,12 @@ namespace SMEIL.Parser.BNF
                 return new Match(this, start, subItems.ToArray(), true);
             }
             else if (this is Choice choiceToken)
-            {   
+            {
                 var subItems = new List<Match>();
                 foreach (var n in choiceToken.Choices)
                 {
                     enumerator.Snapshot();
-
-                    Match s;
-
-                    // Prevent infinite recursion
-                    if (choices.Any(x => x.Token == n && object.Equals(x.Item, start)))
-                    {
-                        s = new Match(n, start, new BNF.Match[0], false);
-                    }
-                    else
-                    {
-                        choices.Add(new BNF.Match(n, start, null, false));
-                        s = n.DoMatch(enumerator, choices);
-                        choices.RemoveAt(choices.Count - 1);
-                    }
+                    var s = n.DoProtectedMatch(enumerator, visited);
 
                     subItems.Add(s);
                     if (s.Matched)
@@ -135,7 +163,7 @@ namespace SMEIL.Parser.BNF
             else if (this is Optional optionalToken)
             {
                 enumerator.Snapshot();
-                var s = optionalToken.Item.DoMatch(enumerator, choices);
+                var s = optionalToken.Item.DoProtectedMatch(enumerator, visited);
                 if (!s.Matched)
                 {
                     enumerator.Rollback();
@@ -151,7 +179,7 @@ namespace SMEIL.Parser.BNF
                 while(true)
                 {
                     enumerator.Snapshot();
-                    var n = sequenceToken.Items.DoMatch(enumerator, choices);
+                    var n = sequenceToken.Items.DoProtectedMatch(enumerator, visited);
                     if (!n.Matched)
                     {
                         enumerator.Rollback();
@@ -168,7 +196,7 @@ namespace SMEIL.Parser.BNF
             {
                 var prop = this.GetType().GetField(nameof(Mapper<int>.Token));
                 var token = prop.GetValue(this);
-                var match = ((BNFItem)token).DoMatch(enumerator, choices);
+                var match = ((BNFItem)token).DoProtectedMatch(enumerator, visited);
                 return new Match(this, start, new BNF.Match[] { match }, match.Matched);
             }
 
