@@ -8,37 +8,37 @@ type avlite: {
 };
 
 
-proc byteswap(in in, out out: avlite)
+proc byteswap(in upstream: avlite, out downstream: avlite)
     var value_ready : bool = false;
 {
     // Check if we are waiting to send a value
     if (value_ready)
     {
         // If we are waiting, keep waiting until we have sent it
-        if (in.ready)
+        if (downstream.ready)
         {
             // The output has been consumed
-            out.valid = false;
+            downstream.valid = false;
             
             // We can read again
             value_ready = false;
-            in.ready = true;
+            upstream.ready = true;
         }
     }
     else
     {
         // Keep waiting until we get a value
-        if (in.valid)
+        if (upstream.valid)
         {
             // Output the value
-            out.value = in.value << 16 | in.value >> 16;
+            downstream.value = upstream.value << 16 | upstream.value >> 16;
             // Signal that it can be read
-            out.valid = true;
+            downstream.valid = true;
 
             // See if we need to block in next cycle
-            value_ready = out.ready;
+            value_ready = downstream.ready;
             // We can read again, if this value is consumed
-            in.ready = in.ready;
+            upstream.ready = downstream.ready;
         }
     }    
 }

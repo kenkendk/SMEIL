@@ -83,6 +83,24 @@ namespace SMEIL.Parser.Instance
         public readonly List<IInstance> Instances = new List<IInstance>();
 
         /// <summary>
+        /// Map of signal names when being read
+        /// </summary>
+        public readonly Dictionary<Instance.Signal, string> SignalReadNames = new Dictionary<Instance.Signal, string>();
+        /// <summary>
+        /// Map of signal names when being written
+        /// </summary>
+        public readonly Dictionary<Instance.Signal, string> SignalWriteNames = new Dictionary<Instance.Signal, string>();
+        /// <summary>
+        /// Map of variable names
+        /// </summary>
+        public readonly Dictionary<Instance.Variable, string> VariableNames = new Dictionary<Instance.Variable, string>();
+
+        /// <summary>
+        /// Map of used local token names
+        /// </summary>
+        public readonly Dictionary<string, int> LocalTokenCounter = new Dictionary<string, int>();
+
+        /// <summary>
         /// Constructs a new instance of the bus
         /// </summary>
         /// <param name="source">The process declaration</param>

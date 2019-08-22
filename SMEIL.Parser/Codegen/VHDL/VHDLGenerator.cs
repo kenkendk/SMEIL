@@ -1994,7 +1994,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                         {
                             // TODO: Nothing gets out here ....
 
-                            // Emit reset statements
+                            // Emit reset statements for variables
                             RenderStatements(
                                 state, 
 
@@ -2014,6 +2014,9 @@ namespace SMEIL.Parser.Codegen.VHDL
                                     })
                                     .ToArray()
                             );
+
+                            // Emit reset statements for output signals
+
 
                             impl += RenderLines(state,
                                 "reentry_guard := FALSE;",
@@ -2145,7 +2148,10 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for declaring a variable</returns>
         public string RenderVariable(RenderState state, Instance.Variable variable)
         {
-            return $"variable {SanitizeVHDLName(variable.Name)}: {RenderNativeType(variable.ResolvedType)};";
+            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
+            var name = GetUniqueLocalName(state, variable);
+
+            return $"variable {name}: {RenderNativeType(variable.ResolvedType)};";
         }
 
         /// <summary>
@@ -2161,6 +2167,68 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
+        /// Gets or creates a unqiue local name for a signal in a process
+        /// </summary>
+        /// <param name="state">The current state</param>
+        /// <param name="busname">The bus name to use</param>
+        /// <param name="signal">The signal to get the local name for</param>
+        /// <param name="asRead">If using the variable for reading</param>
+        /// <param name="suffix">The suffix to use</param>
+        /// <returns>A name that is unique in the process scope</returns>
+        private string GetUniqueLocalName(RenderState state, string busname, Instance.Signal signal, bool asRead, string suffix = null)
+        {
+            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
+            if ((asRead ? process.SignalReadNames : process.SignalWriteNames).TryGetValue(signal, out var name))
+                return name;
+
+            return (asRead ? process.SignalReadNames : process.SignalWriteNames)[signal] = CreateUniqueLocalName(RenderSignalName(busname, signal.Name, suffix), process);
+
+        }
+
+        /// <summary>
+        /// Gets or creates a unqiue local name for a variable in a process
+        /// </summary>
+        /// <param name="state">The current state</param>
+        /// <param name="variable">The variable to get the local name for</param>
+        /// <returns>A name that is unique in the process scope</returns>
+        private string GetUniqueLocalName(RenderState state, Instance.Variable variable)
+        {
+            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
+            if (process.VariableNames.TryGetValue(variable, out var name))
+                return name;
+            
+            return process.VariableNames[variable] = CreateUniqueLocalName(SanitizeVHDLName(variable.Name), process);
+        }
+
+        /// <summary>
+        /// Registers the given name as used, and returns a (possible changed) name that is unique in the process
+        /// </summary>
+        /// <param name="name">The name to register</param>
+        /// <param name="process">The process scope to use</param>
+        /// <returns>The Unique name</returns>
+        private string CreateUniqueLocalName(string name, Instance.Process process)
+        {
+            // Register some reserved signal names first
+            if (process.LocalTokenCounter.Count == 0)
+            {
+                foreach (var n in new string[] { "RDY", "FIN", "ENB", "reentry_guard", Config.CLOCK_SIGNAL_NAME, Config.RESET_SIGNAL_NAME })
+                    process.LocalTokenCounter.Add(n, 1);
+            }
+
+            if (process.LocalTokenCounter.TryGetValue(name, out var c))
+            {
+                process.LocalTokenCounter[name] = c + 1;
+                name = name + "_" + c;
+            }
+            else
+            {
+                process.LocalTokenCounter[name] = 1;
+            }
+
+            return name;
+        }
+
+        /// <summary>
         /// Renders a bus instance for use within a process
         /// </summary>
         /// <param name="state">The state of the render</param>
@@ -2173,26 +2241,28 @@ namespace SMEIL.Parser.Codegen.VHDL
             var parmap = process.MappedParameters.FirstOrDefault(x => x.MappedItem == bus);
             var busname = parmap == null ? bus.Name : parmap.LocalName;
 
-            // TODO: The signal names here are not reflected in code....
-
             // Normally signals are in or out
-            var signals = 
+            var signals =
                 bus
                 .Instances
                 .OfType<Instance.Signal>()
                 .Where(x => usages.ContainsKey(x))
-                .SelectMany(x => {
+                .SelectMany(x =>
+                {
                     var d = usages[x];
                     if (d == Validation.ItemUsageDirection.Both)
                     {
-                        return new[] { 
-                            $"{RenderSignalName(busname, x.Name, "in")}: in {RenderNativeType(x.ResolvedType)};",
-                            $"{RenderSignalName(busname, x.Name, "out")}: out {RenderNativeType(x.ResolvedType)};"
+                        return new[] {
+                            $"{GetUniqueLocalName(state, busname, x, true, "in")}: in {RenderNativeType(x.ResolvedType)};",
+                            $"{GetUniqueLocalName(state, busname, x, false, "out")}: out {RenderNativeType(x.ResolvedType)};"
                         };
+                    } 
+                    else 
+                    {
+                        return new[] { $"{GetUniqueLocalName(state, busname, x, d == Validation.ItemUsageDirection.Read)}: {(d == Validation.ItemUsageDirection.Read ? "in" : "out")} {RenderNativeType(x.ResolvedType)};" };
                     }
-                    else
-                        return new[] { $"{RenderSignalName(busname, x.Name)}: {(usages[x] == Validation.ItemUsageDirection.Read ? "in" : "out")} {RenderNativeType(x.ResolvedType)};" };
                 });
+
 
             // Return the bus signal declaration with the signals
             return RenderLines(state, 
@@ -2243,8 +2313,17 @@ namespace SMEIL.Parser.Codegen.VHDL
             var process = state.ActiveScopes.OfType<Instance.Process>().Last();
             var symboltable = ValidationState.LocalScopes[process];
             var symbol = ValidationState.FindSymbol(assignStatement.Name, symboltable);
+            
+            string name;
+            if (symbol is Instance.Signal signal)
+                name = GetUniqueLocalName(state, null, signal, false, null);
+            else if (symbol is Instance.Variable variable)
+                name = GetUniqueLocalName(state, variable);
+            else
+                throw new ParserException("Unexpexted symbol type", assignStatement.Name);
 
-            return $"{state.Indent}{ RenderName(state, assignStatement.Name) } {( symbol is Instance.Signal ? "<=" : ":=" )} { RenderExpression(state, assignStatement.Value) };";
+
+            return $"{state.Indent}{ name } {( symbol is Instance.Signal ? "<=" : ":=" )} { RenderExpression(state, assignStatement.Value) };";
         }
 
         /// <summary>
@@ -2556,7 +2635,20 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for the name</returns>
         public string RenderName(RenderState state, AST.Name name)
         {
-            return SanitizeVHDLName(string.Join("_", name.Identifier.Select(x => RenderIdentifier(state, x))));
+            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
+            var symboltable = ValidationState.LocalScopes[process];
+            var symbol = ValidationState.FindSymbol(name, symboltable);
+
+            string localname;
+            if (symbol is Instance.Signal signal)
+                localname = GetUniqueLocalName(state, null, signal, true, null);
+            else if (symbol is Instance.Variable variable)
+                localname = GetUniqueLocalName(state, variable);
+            else
+                throw new ParserException("Unexpected type", name);
+
+
+            return localname;
         }
 
         /// <summary>
