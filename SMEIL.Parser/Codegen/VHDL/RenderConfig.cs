@@ -146,6 +146,11 @@ namespace SMEIL.Parser.Codegen.VHDL
         public string RESET_SIGNAL_NAME { get; set; } = "RST";
 
         /// <summary>
+        /// Sets if the reset signal is active when pulled low
+        /// </summary>
+        public bool RESET_ACTIVE_LOW { get; set; } = false;
+
+        /// <summary>
         /// Avoids using the detected signal direction and uses the defined signal directions instead 
         /// </summary>
         public bool USE_DEFINED_SIGNAL_DIRECTIONALITY { get; set; } = false;

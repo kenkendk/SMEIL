@@ -39,6 +39,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                 config.REMOVE_ENABLE_FLAGS = true;
                 config.RESET_SIGNAL_NAME = "resetn";
                 config.CLOCK_SIGNAL_NAME = "clock";
+                config.RESET_ACTIVE_LOW = true;
                 options.VHDLFileExtensions = "vhd";
             }
 

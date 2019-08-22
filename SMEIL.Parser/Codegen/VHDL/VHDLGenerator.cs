@@ -677,10 +677,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                         decl += RenderLines(state,
                             "",
                             "-- Reset the system before testing",
-                            "RESET <= '1';",
+                            $"RESET <= {(Config.RESET_ACTIVE_LOW ? "'0'" : "'1'")};",
                             "ENABLE <= FALSE;",
                             "wait for 5 NS;",
-                            "RESET <= '0';",
+                            $"RESET <= {(Config.RESET_ACTIVE_LOW ? "'1'" : "'0'")};",
                             "ENABLE <= TRUE;",
                             "",
                             "-- Read a line each clock",
@@ -1560,7 +1560,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                         "-- Propagate all clocked and feedback signals",
                         $"process({Config.CLOCK_SIGNAL_NAME}, {Config.RESET_SIGNAL_NAME})",
                         "begin",
-                        $"    if {Config.RESET_SIGNAL_NAME} = '1' then",
+                        $"    if {Config.RESET_SIGNAL_NAME} = {(Config.RESET_ACTIVE_LOW ? "'0'" : "'1'")} then",
                         "        RDY <= FALSE;",
                         "        readyflag <= TRUE;",
                         $"    elsif rising_edge({Config.CLOCK_SIGNAL_NAME}) then",
@@ -1997,7 +1997,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                             ""
                         );
 
-                        impl += RenderLines (state, $"if {Config.RESET_SIGNAL_NAME} = '1' then");
+                        impl += RenderLines (state, $"if {Config.RESET_SIGNAL_NAME} = {(Config.RESET_ACTIVE_LOW ? "'0'" : "'1'")} then");
 
                         using(state.Indenter())
                         {
