@@ -79,6 +79,11 @@ namespace SMEIL.Parser.Codegen.VHDL
         public readonly Instance.Process[] AllRenderedProcesses;
 
         /// <summary>
+        /// The name scopes for all processes
+        /// </summary>
+        public readonly Dictionary<Instance.Process, NameScopeHelper> NameScopes = new Dictionary<Instance.Process, NameScopeHelper>();
+
+        /// <summary>
         /// The state passed to each render step
         /// </summary>
         public class RenderState
@@ -196,6 +201,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                 .OfType<Instance.Process>()                
                 .Distinct()
                 .ToList();
+
+            // Set up the name scopes
+            foreach (var p in AllProcesses)
+                NameScopes[p] = new NameScopeHelper();
 
             // Group processes by their names so we can differentiate
             var proccounters = AllProcesses
@@ -2178,10 +2187,12 @@ namespace SMEIL.Parser.Codegen.VHDL
         private string GetUniqueLocalName(RenderState state, string busname, Instance.Signal signal, bool asRead, string suffix = null)
         {
             var process = state.ActiveScopes.OfType<Instance.Process>().Last();
-            if ((asRead ? process.SignalReadNames : process.SignalWriteNames).TryGetValue(signal, out var name))
+            var namescope = NameScopes[process];
+
+            if ((asRead ? namescope.SignalReadNames : namescope.SignalWriteNames).TryGetValue(signal, out var name))
                 return name;
 
-            return (asRead ? process.SignalReadNames : process.SignalWriteNames)[signal] = CreateUniqueLocalName(RenderSignalName(busname, signal.Name, suffix), process);
+            return (asRead ? namescope.SignalReadNames : namescope.SignalWriteNames)[signal] = CreateUniqueLocalName(RenderSignalName(busname, signal.Name, suffix), process);
 
         }
 
@@ -2194,10 +2205,12 @@ namespace SMEIL.Parser.Codegen.VHDL
         private string GetUniqueLocalName(RenderState state, Instance.Variable variable)
         {
             var process = state.ActiveScopes.OfType<Instance.Process>().Last();
-            if (process.VariableNames.TryGetValue(variable, out var name))
+            var namescope = NameScopes[process];
+
+            if (namescope.VariableNames.TryGetValue(variable, out var name))
                 return name;
             
-            return process.VariableNames[variable] = CreateUniqueLocalName(SanitizeVHDLName(variable.Name), process);
+            return namescope.VariableNames[variable] = CreateUniqueLocalName(SanitizeVHDLName(variable.Name), process);
         }
 
         /// <summary>
@@ -2208,21 +2221,23 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>The Unique name</returns>
         private string CreateUniqueLocalName(string name, Instance.Process process)
         {
+            var namescope = NameScopes[process];
+
             // Register some reserved signal names first
-            if (process.LocalTokenCounter.Count == 0)
+            if (namescope.LocalTokenCounter.Count == 0)
             {
                 foreach (var n in new string[] { "RDY", "FIN", "ENB", "reentry_guard", Config.CLOCK_SIGNAL_NAME, Config.RESET_SIGNAL_NAME })
-                    process.LocalTokenCounter.Add(n, 1);
+                    namescope.LocalTokenCounter.Add(n, 1);
             }
 
-            if (process.LocalTokenCounter.TryGetValue(name, out var c))
+            if (namescope.LocalTokenCounter.TryGetValue(name, out var c))
             {
-                process.LocalTokenCounter[name] = c + 1;
+                namescope.LocalTokenCounter[name] = c + 1;
                 name = name + "_" + c;
             }
             else
             {
-                process.LocalTokenCounter[name] = 1;
+                namescope.LocalTokenCounter[name] = 1;
             }
 
             return name;
