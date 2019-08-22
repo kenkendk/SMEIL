@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace SMEIL.Parser
@@ -87,6 +88,17 @@ namespace SMEIL.Parser
         };
 
         /// <summary>
+        /// The list of tokens that should be treated as one
+        /// </summary>
+        private readonly static Dictionary<char, int[]> MULTI_CHAR_TOKENS 
+            = new string[]  { 
+                "->", ">>", "<<", "//", "/*", "*/",
+                "==", "!=", "<=", ">=", "&&", "||"
+            }
+                .GroupBy(x => x[0])
+                .ToDictionary(x => x.Key, x => x.Select(y => (int)y[1]).ToArray());
+
+        /// <summary>
         /// Splits the input into tokens
         /// </summary>
         /// <returns>The tokenized results.</returns>
@@ -136,11 +148,11 @@ namespace SMEIL.Parser
                         continue;
                     }
 
-                    // Combine -> to a single token
-                    if (c == '-' && reader.Peek() == '>')
+                    // Combine to a single token                    
+                    if (MULTI_CHAR_TOKENS.TryGetValue(c, out var followers) && followers.Contains(reader.Peek()))
                     {
-                        reader.Read();
-                        var ct = new ParseToken(charoffset, line, lineoffset, "->");
+                        var n = (char)reader.Read();
+                        var ct = new ParseToken(charoffset, line, lineoffset, c.ToString() + n);
 
                         charoffset += ct.Text.Length;
                         lineoffset += ct.Text.Length;
