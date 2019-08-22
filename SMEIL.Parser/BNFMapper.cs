@@ -119,44 +119,6 @@ namespace SMEIL.Parser
                 x => x.FirstDerivedMapper<AST.Constant>()
             );
 
-            var binaryOperation = Mapper(
-                Choice(
-                    "+",
-                    "-",
-                    "*",
-                    "%",
-                    Composite("=", "="),
-                    Composite("!", "="),
-                    Composite("<", "<"),
-                    Composite(">", ">"),
-                    Composite(">", "="),
-                    Composite("<", "="),
-                    ">",
-                    "<",
-                    Composite("&", "&"),
-                    Composite("|", "|"),
-                    "&",
-                    "|"
-                ),
-
-                x => new AST.BinaryOperation(
-                    x.Item, 
-                    AST.BinaryOperation.Parse(
-                        // Rewire the parse token for better error messages
-                        new ParseToken(
-                            x.Item.CharOffset, 
-                            x.Item.Line, 
-                            x.Item.LineOffset, 
-                            string.Join("", 
-                                x.Flat
-                                    .Where(n => n.Token is BNF.Literal)
-                                    .Select(n => n.Item.Text)
-                            )
-                        )
-                    )
-                )
-            );
-
             var unaryOperation = Mapper(
                 Choice(
                     "-",
@@ -228,14 +190,13 @@ namespace SMEIL.Parser
                 }
             );            
 
-            var binaryExpression = Mapper(
-                Composite(expression, binaryOperation, expression), 
+            var unaryExpresssion = Mapper(
+                Composite(unaryOperation, expression),
 
-                x => new AST.BinaryExpression(
+                x => new AST.UnaryExpression(
                     x.Item,
-                    x.FirstMapper(expression),
-                    x.FirstMapper(binaryOperation),
-                    x.FindSubMatch(0, 2).FirstMapper(expression)
+                    x.FirstMapper(unaryOperation),
+                    x.FirstMapper(expression)
                 )
             );
 
@@ -253,17 +214,103 @@ namespace SMEIL.Parser
                     new AST.TypeName(x.FirstMapper(name), null),
                     true
                 )
+            );            
+
+            // Create expressions to capture the operator precedence
+            var binopPrecedence = new string[][] {
+                new string[] { "*", "%" },             // lvl1
+                new string[] { "-", "+" },             // lvl2
+                new string[] { "<<", ">>" },           // lvl3
+                new string[] { "<", ">", "<=", ">=" }, // lvl4
+                new string[] { "==", "!=" },           // lvl5
+                new string[] { "&", "^", "|" },        // lvl6
+                new string[] { "&&" },                 // lvl7
+                new string[] { "||" },                 // lvl8
+            };
+
+            // The BNF simply has "expression ::= expression op expression",
+            // but this is a left-recursive non-terminal and does not encode 
+            // operator precedence.
+            // To solve this, we re-factor the each precedence level
+            // to avoid the left-recursive non-terminal,
+            // and chain the precedence levels
+
+            // Group the terminal expressions for easy reference
+            var terminatingExpression = Mapper(
+                Choice(new BNF.BNFItem[] {
+                    typeCastExpression,
+                    unaryExpresssion,
+                    Mapper(Composite("(", expression, ")"), x => new AST.ParenthesizedExpression(x.Item, x.FirstMapper(expression))),
+                    Mapper(literal, x => new AST.LiteralExpression(x.Item, x.FirstMapper(literal))),
+                    Mapper(name, x => new AST.NameExpression(x.Item, x.FirstMapper(name)))
+                }),
+                x => x.FirstDerivedMapper<AST.Expression>()
             );
 
-            // The recursive definition of an expression
-            expression.Token = Choice(
-                binaryExpression,
-                typeCastExpression,
-                Mapper(literal, x => new AST.LiteralExpression(x.Item, x.FirstMapper(literal))),
-                Mapper(name, x => new AST.NameExpression(x.Item, x.FirstMapper(name))),
-                Mapper(Composite("(", expression, ")"), x => new AST.ParenthesizedExpression(x.Item, x.FirstMapper(expression))),
-                Mapper(Composite(unaryOperation, expression), x => new AST.UnaryExpression(x.Item, x.FirstMapper(unaryOperation), x.FirstMapper(expression)))
-            );
+            // The prev variable is the "next" level, starting with a terminal
+            var prev = terminatingExpression;
+            var binOpSeq = binopPrecedence.Select(
+                (x, i) => {
+                    // Copy into this scope
+                    var prev_locked = prev;
+
+                    // Match any character from the operation list
+                    var opMap = Mapper(
+                        Choice(x.Select(y => new BNF.Literal(y)).ToArray()),
+                        y => new AST.BinaryOperation(y.Item)
+                    );
+
+                    // Create a term where the starting token is a terminal,
+                    // namely the operation literal
+                    var tmp = Mapper(
+                        null,
+                        y => new {
+                            Operation = y.FirstOrDefaultMapper(opMap),
+                            Expression = y.FirstOrDefaultMapper(prev_locked),
+                        }
+                    );
+
+                    // Recursive definition, but starting with a terminal
+                    tmp.Token = Optional(
+                        Composite(
+                            opMap,
+                            prev_locked,
+                            tmp
+                        )
+                    );
+
+                    // The start item in each level matches the non-terminal
+                    // a single time and then matches the recusive part
+                    var topItem = Mapper<AST.Expression>(
+                        Composite(
+                            prev_locked,
+                            tmp
+                        ),
+                        n =>
+                        {
+                            // If this is a single terminal expression, just return it
+                            var pm = n.FirstMapper(prev_locked);
+                            var subOp = n.FirstMapper(tmp);
+                            if (subOp.Operation == null)
+                                return pm;
+
+                            // Otherwise re-wire into a composite expression
+                            return new AST.BinaryExpression(
+                                n.Item,
+                                pm,
+                                subOp.Operation,
+                                subOp.Expression
+                            );
+                        }
+                    );
+
+                    return prev = topItem;
+                }
+            ).ToArray();
+
+            // The final token will recurse into the others
+            // and trail out in the terminals
+            expression.Token = prev;
 
             var statement = Mapper(
                 null,
@@ -298,7 +345,7 @@ namespace SMEIL.Parser
                 
                 x => new Tuple<AST.Expression, AST.Statement[]>(
                     x.FirstMapper(expression),
-                    x.InvokeMappers(statement).ToArray()
+                    x.FindSubMatch(0, 5).InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
 
@@ -312,7 +359,7 @@ namespace SMEIL.Parser
                     "}"
                 ),
 
-                x => x.InvokeMappers(statement).ToArray()
+                x => x.FindSubMatch(0, 2).InvokeFirstLevelMappers(statement).ToArray()
             );
 
             var ifStatement = Mapper(
@@ -333,8 +380,8 @@ namespace SMEIL.Parser
                 x => new AST.IfStatement(
                     x.Item,
                     x.FirstMapper(expression),
-                    x.FindSubMatch(0, 5).InvokeMappers(statement).ToArray(),
-                    x.FindSubMatch(0, 7).InvokeMappers(elifBlock).ToArray(),
+                    x.FindSubMatch(0, 5).InvokeFirstLevelMappers(statement).ToArray(),
+                    x.FindSubMatch(0, 7).InvokeFirstLevelMappers(elifBlock).ToArray(),
                     x.FindSubMatch(0, 8).FirstOrDefaultMapper(elseBlock)
                 )
             );
@@ -357,7 +404,7 @@ namespace SMEIL.Parser
                     x.FirstMapper(ident),
                     x.FindSubMatch(0, 3).FirstMapper(expression),
                     x.FindSubMatch(0, 5).FirstMapper(expression),
-                    x.FindSubMatch(0, 7).InvokeMappers(statement).ToArray()
+                    x.FindSubMatch(0, 7).InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
 
@@ -372,7 +419,7 @@ namespace SMEIL.Parser
 
                 x => new Tuple<AST.Expression, AST.Statement[]>(
                     x.FirstMapper(expression),
-                    x.InvokeMappers(statement).ToArray()
+                    x.InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
 
@@ -393,8 +440,8 @@ namespace SMEIL.Parser
 
                 x => 
                 {
-                    var defaultCase = x.FindSubMatch(0, 5).InvokeMappers(statement).ToArray();
-                    var cases = x.InvokeMappers(switchCase);
+                    var defaultCase = x.FindSubMatch(0, 5).InvokeFirstLevelMappers(statement).ToArray();
+                    var cases = x.InvokeFirstLevelMappers(switchCase);
                     if (defaultCase.Length > 0)
                         cases = cases.Concat(new[] { new Tuple<AST.Expression, AST.Statement[]>(null, defaultCase) });
 
@@ -424,7 +471,7 @@ namespace SMEIL.Parser
                 x => new AST.TraceStatement(
                     x.Item,
                     x.FirstMapper(stringliteral).Value,
-                    x.InvokeMappers(expression).ToArray()
+                    x.InvokeFirstLevelMappers(expression).ToArray()
                 )
             );
 
@@ -486,11 +533,15 @@ namespace SMEIL.Parser
                     expression
                 ),
 
-                x => new AST.Range(
-                    x.Item, 
-                    x.InvokeMappers(expression).First(), 
-                    x.InvokeMappers(expression).Last()
-                )
+                x => {
+                    var mappers = x.FindSubMatch(0).InvokeFirstLevelMappers(expression);
+
+                    return new AST.Range(
+                        x.Item, 
+                        mappers.First(), 
+                        mappers.Last()
+                    );
+                }
             );
 
             var varDecl = Mapper(
@@ -623,7 +674,7 @@ namespace SMEIL.Parser
                     x.Item,
                     x.FirstMapper(ident),
                     x.FirstMapper(parameters),
-                    x.InvokeMappers(statement).ToArray()
+                    x.InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
 
@@ -915,7 +966,7 @@ namespace SMEIL.Parser
                     x.FirstMapper(ident),
                     x.FirstOrDefaultMapper(parameters),
                     x.FindSubMatch(0, 6).InvokeMappers(declaration).ToArray(),
-                    x.FindSubMatch(0, 8).InvokeMappers(statement).ToArray()
+                    x.FindSubMatch(0, 8).InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
 

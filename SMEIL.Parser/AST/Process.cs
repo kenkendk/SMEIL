@@ -23,7 +23,7 @@ namespace SMEIL.Parser.AST
         /// </summary>
         public Declaration[] Declarations;
         /// <summary>
-        /// The output busses
+        /// The statements
         /// </summary>
         public Statement[] Statements;
 

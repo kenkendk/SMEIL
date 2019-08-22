@@ -145,6 +145,16 @@ namespace SMEIL.Parser.AST
         }
 
         /// <summary>
+        /// Constructs a new binary operation
+        /// </summary>
+        /// <param name="token">The token where the operation was found</param>
+        public BinaryOperation(ParseToken token)
+            : base(token)
+        {
+            Operation = Parse(token);
+        }
+
+        /// <summary>
         /// Parses a string into a binary operation
         /// </summary>
         /// <param name="value">The string to parse</param>
