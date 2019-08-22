@@ -50,6 +50,11 @@ namespace SMEIL.Parser
         int SnapshotLength { get; }
     }
 
+    // TODO: This should be rewritten to just have a single
+    // buffered copy of the source, and then use an offset+count
+    // for each snapshot instead of the elaborate copying
+    // used here
+
     /// <summary>
     /// Represents an enumerator that can have items prepended to the stream
     /// </summary>
@@ -137,7 +142,6 @@ namespace SMEIL.Parser
             if (m_buffer.Count > 1)
             {
                 var tmp = m_buffer.Pop();
-                var res = m_buffer.Peek();
                 m_buffer.Push(tmp);
 
                 return tmp;
@@ -205,9 +209,15 @@ namespace SMEIL.Parser
         public void Commit()
         {
             var n = m_snapshots.Pop();
-            if (m_snapshots.Count > 0)
-                while(n.Count > 0)
-                    m_snapshots.Peek().Push(n.Pop());
+            if (m_snapshots.Count > 0 && n.Count > 0)
+            {
+                // When we copy from stack to stack,
+                // we need to reverse insert order
+                // to preserve the stored order
+                var els = n.ToArray();
+                for(var i = els.Length - 1; i >= 0; i--)
+                    m_snapshots.Peek().Push(els[i]);
+            }
         }
 
         /// <summary>
