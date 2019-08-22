@@ -492,7 +492,7 @@ namespace SMEIL.Parser.Validation
         /// </summary>
         public void Validate()
         {
-            var modules = new IValidator[] {                
+            var modules = new IValidator[] {
                 new CreateInstances(),
                 new WireParameters(),
                 new AssignTypes(),
