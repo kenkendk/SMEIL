@@ -146,6 +146,17 @@ namespace SMEIL.Parser.BNF
         }
 
         /// <summary>
+        /// Invokes all mappers of the given type and returns the result, but does not recurse into submatches
+        /// </summary>
+        /// <param name="instance">The instance to match, or <c>null</c> to match any</param>
+        /// <typeparam name="T">The mapper type to match</typeparam>
+        /// <returns>A sequence of the invoked mappers</returns>
+        public IEnumerable<T> InvokeFirstLevelMappers<T>(BNF.Mapper<T> instance = null)
+        {
+            return GetFirstLevelMappers(instance).Select(x => x.Item1);
+        }
+
+        /// <summary>
         /// Invokes all mappers of the given type and returns the result
         /// and the BNF match for each item
         /// </summary>
@@ -154,17 +165,42 @@ namespace SMEIL.Parser.BNF
         /// <returns>A sequence of the invoked mappers and the match tokens</returns>
         public IEnumerable<Tuple<T, Match>> GetMappers<T>(BNF.Mapper<T> instance = null)
         {
-            return Flat
+            return GetMappers(Flat, instance);
+        }
+
+        /// <summary>
+        /// Invokes all mappers of the given type and returns the result
+        /// and the BNF match for each item, but does not recurse into submatches
+        /// </summary>
+        /// <param name="instance">The instance to match</param>
+        /// <typeparam name="T">The mapper type to match</typeparam>
+        /// <returns>A sequence of the invoked mappers and the match tokens</returns>
+        public IEnumerable<Tuple<T, Match>> GetFirstLevelMappers<T>(BNF.Mapper<T> instance = null)
+        {
+            return GetMappers(this.SubMatches, instance);
+        }
+
+        /// <summary>
+        /// Invokes all mappers of the given type and returns the result
+        /// and the BNF match for each item
+        /// </summary>
+        /// <param name="source">The list of tokens to examine</param>
+        /// <param name="instance">The instance to match, or <c>null</c> to match any</param>
+        /// <typeparam name="T">The mapper type to match</typeparam>
+        /// <returns>A sequence of the invoked mappers and the match tokens</returns>
+        private IEnumerable<Tuple<T, Match>> GetMappers<T>(IEnumerable<Match> source, BNF.Mapper<T> instance = null)
+        {
+            return source
                 .Where(n => n.Matched)
                 .Where(n => n.Token is BNF.Mapper<T>)
                 .Where(n => instance == null || n.Token == instance)
-                .Select(n => 
+                .Select(n =>
                     new Tuple<T, Match>(
                         ((BNF.Mapper<T>)n.Token).Matcher(n),
                         n
                     )
                 );
-        }
+        }        
 
         /// <summary>
         /// Gets the first match for the given instance and throws an exception if not found
@@ -214,6 +250,19 @@ namespace SMEIL.Parser.BNF
             res.Insert(0, this);
 
             return res;
-        }        
+        }
+
+        /// <summary>
+        /// Returns the deepest number of matches
+        /// </summary>
+        /// <returns>The longest match</returns>
+        public int LongestMatch()
+        {
+            if (this.SubMatches == null || this.SubMatches.Length == 0)
+                return 1;
+
+            return this.SubMatches.Select(x => x.LongestMatch()).OrderByDescending(x => x).First() + 1;
+        }
+
     }
 }
