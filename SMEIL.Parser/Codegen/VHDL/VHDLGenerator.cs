@@ -197,16 +197,24 @@ namespace SMEIL.Parser.Codegen.VHDL
                 .Distinct()
                 .ToList();
 
-            // Figure out which instances are from the same source declaration
-            var proccounters = AllProcesses.GroupBy(x => x.Name).ToDictionary(x => x.Key, x => x.ToList());
+            // Group processes by their names so we can differentiate
+            var proccounters = AllProcesses
+                .GroupBy(x => string.IsNullOrWhiteSpace(x.Name) || x.Name == "_" ? x.ProcessDefinition.Name.Name : x.Name)
+                .ToDictionary(
+                    x => x.Key, 
+                    x => x.ToList()
+                );
 
             // Give the instances names, suffixed with the instance number if there are more than one
-            ProcessNames = AllProcesses
-                .Select(x => new
-                {
-                    Key = x,
-                    Name = x.Name + (proccounters[x.Name].Count == 1 ? "" : "_" + (proccounters[x.Name].IndexOf(x) + 1).ToString())
-                })
+            ProcessNames = proccounters
+                .SelectMany(x => 
+                    x.Value.Select(
+                        y => new {
+                            Key = y,
+                            Name = x.Key + (proccounters[x.Key].Count == 1 ? "" : "_" + (proccounters[x.Key].IndexOf(y) + 1).ToString())
+                        }
+                    )
+                )
                 .ToDictionary(x => x.Key, x => x.Name);
 
             AllRenderedProcesses = validationstate
@@ -1185,6 +1193,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                 using (state.Indenter())                
                 {
                     decl += RenderLines(state,
+                        "-- Boolean support signals",
+                        "signal FIN_BOOL: boolean;",
+                        "signal ENB_BOOL: boolean;",
+                        "",
                         "-- User defined signals here",
                         "-- #### USER-DATA-SIGNALS-START",
                         "-- #### USER-DATA-SIGNALS-END"
@@ -1196,13 +1208,50 @@ namespace SMEIL.Parser.Codegen.VHDL
                         decl += RenderBusSignals(state, n, exportnames[n] = "ext_" + exportnames[n]);
 
                     decl += RenderLines(state, "");
+
+                    decl += RenderLines(state,
+                        "-- Support functions to convert boolean signals",
+                        "pure function TO_STD_LOGIC(src: BOOLEAN) return STD_LOGIC is",
+                        "begin",
+                        "    if src then",
+                        "        return '1';",
+                        "    else",
+                        "        return'0';",
+                        "    end if;",
+                        "end function TO_STD_LOGIC;",
+                        "",
+                        "pure function FROM_STD_LOGIC(src: STD_LOGIC) return BOOLEAN is",
+                        "begin",
+                        "  return src == '1'",
+                        "end function FROM_STD_LOGIC;",
+                        ""
+                    );
                 }
 
                 decl += RenderLines(state, "begin");
 
                 using(state.Indenter())
                 {
-                    decl += RenderLines(state, "-- Write out any converted signals with the correct type");
+                    decl += RenderLines(state, 
+                        "-- Write out any converted signals with the correct type",
+                        "FIN <= TO_STD_LOGIC(FIN_BOOL);",
+                        $"ENB_BOOL <= FROM_STD_LOGIC({(Config.REMOVE_ENABLE_FLAGS ? "'1'" : Config.ENABLE_SIGNAL_NAME)});",
+                        ""
+                    );
+
+                    // Conversion methods from exported type to internal type
+                    var conv_input = new Dictionary<ILType, string> {
+                        { ILType.SignedInteger, "SIGNED" },
+                        { ILType.UnsignedInteger, "UNSIGNED" },
+                        { ILType.Bool, "TO_STD_LOGIC" },
+                    };
+
+                    // Conversion methods from internal type to exported type
+                    var conv_output = new Dictionary<ILType, string> {
+                        { ILType.SignedInteger, "STD_LOGIC_VECTOR" },
+                        { ILType.UnsignedInteger, "STD_LOGIC_VECTOR" },
+                        { ILType.Bool, "FROM_STD_LOGIC" },
+                    };
 
                     // Forward type converted input/output signals
                     foreach (var bus in typeconvertedbusses)
@@ -1211,11 +1260,21 @@ namespace SMEIL.Parser.Codegen.VHDL
                             .OfType<Instance.Signal>()
                             .Select(x =>
                             {
-                                return ValidationState.TopLevel.InputBusses.Contains(x.ParentBus)
-                                    ? $"{RenderSignalName(exportnames[bus], x.Name)} <= {(x.ResolvedType.Type == ILType.SignedInteger ? "SIGNED" : "UNSIGNED")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)});"
-                                    : $"{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)} <= STD_LOGIC_VECTOR({RenderSignalName(exportnames[bus], x.Name)});";
+                                if(ValidationState.TopLevel.InputBusses.Contains(x.ParentBus))
+                                {
+                                    // Convert inputs
+                                    conv_input.TryGetValue(x.ResolvedType.Type, out var f);
+                                    return $"{RenderSignalName(exportnames[bus], x.Name)} <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)});";
+                                }
+                                else
+                                {
+                                    // Convert outputs
+                                    conv_output.TryGetValue(x.ResolvedType.Type, out var f);
+                                    return $"{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)} <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus], x.Name)});";
+                                }
                             })
                         );
+
 
                     decl += RenderLines(state, 
                         "",
@@ -1233,9 +1292,9 @@ namespace SMEIL.Parser.Codegen.VHDL
                             );
 
                         decl += RenderLines(state,
-                            $"{Config.ENABLE_SIGNAL_NAME} => {(Config.REMOVE_ENABLE_FLAGS ? "'1'" : Config.ENABLE_SIGNAL_NAME)},",
+                            $"{Config.ENABLE_SIGNAL_NAME} => ENB_BOOL,",
                             $"{Config.RESET_SIGNAL_NAME} => {Config.RESET_SIGNAL_NAME},",
-                            "FIN => FIN,",
+                            "FIN => FIN_BOOL,",
                             $"{Config.CLOCK_SIGNAL_NAME} => {Config.CLOCK_SIGNAL_NAME}"
                         );
                     }
@@ -1246,6 +1305,7 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                     decl += RenderLines(state,
                         "",
+
                         "-- User defined processes here",
                         "-- #### USER-DATA-CODE-START",
                         "-- #### USER-DATA-CODE-END"
@@ -1314,10 +1374,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                             "-- #### USER-DATA-ENTITYSIGNALS-END",
                             "",
                             "-- Enable signal",
-                            $"{Config.ENABLE_SIGNAL_NAME}: in STD_LOGIC;",
+                            $"{Config.ENABLE_SIGNAL_NAME}: in BOOLEAN;",
                             "",
                             "--Finished signal",
-                            "FIN : out STD_LOGIC;",
+                            "FIN : out BOOLEAN;",
                             "",
                             "--Reset signal",
                             $"{Config.RESET_SIGNAL_NAME} : in STD_LOGIC;",
@@ -1353,18 +1413,18 @@ namespace SMEIL.Parser.Codegen.VHDL
                     decl += RenderLines(state,
                          AllRenderedProcesses
                          .SelectMany(proc => new string[] {
-                            $"signal RDY_{ProcessNames[proc]}: STD_LOGIC;",
-                            $"signal FIN_{ProcessNames[proc]}: STD_LOGIC;",
+                            $"signal RDY_{ProcessNames[proc]}: BOOLEAN;",
+                            $"signal FIN_{ProcessNames[proc]}: BOOLEAN;",
                          })
                     );
 
                     decl += RenderLines(state,
                         "",
                         "-- The primary ready driver signal",
-                        "signal RDY: STD_LOGIC;",
+                        "signal RDY: BOOLEAN;",
                         "",
                         "-- Ready flag flip signal",
-                        "signal readyflag: STD_LOGIC;",
+                        "signal readyflag: BOOLEAN;",
                         ""
                     );
                 }
@@ -1492,10 +1552,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                         $"process({Config.CLOCK_SIGNAL_NAME}, {Config.RESET_SIGNAL_NAME})",
                         "begin",
                         $"    if {Config.RESET_SIGNAL_NAME} = '1' then",
-                        "        RDY <= '0';",
-                        "        readyflag <= '1';",
+                        "        RDY <= FALSE;",
+                        "        readyflag <= TRUE;",
                         $"    elsif rising_edge({Config.CLOCK_SIGNAL_NAME}) then",
-                        $"        if {Config.ENABLE_SIGNAL_NAME} = '1' then",
+                        $"        if {Config.ENABLE_SIGNAL_NAME} then",
                         "            RDY <= not readyflag;",
                         "            readyflag <= not readyflag;",
                         "        end if;",
@@ -1838,13 +1898,13 @@ namespace SMEIL.Parser.Codegen.VHDL
                             $"{Config.CLOCK_SIGNAL_NAME} : in STD_LOGIC;",
                             "",
                             "--Ready signal",
-                            "RDY : in STD_LOGIC;",
+                            "RDY : in BOOLEAN;",
                             "",
                             "--Finished signal",
-                            "FIN : out STD_LOGIC;",
+                            "FIN : out BOOLEAN;",
                             "",
                             "--Enable signal",
-                            $"{Config.ENABLE_SIGNAL_NAME} : in STD_LOGIC;",
+                            $"{Config.ENABLE_SIGNAL_NAME} : in BOOLEAN;",
                             "",
                             "--Reset signal",
                             $"{Config.RESET_SIGNAL_NAME} : in STD_LOGIC"
@@ -1897,8 +1957,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     if (process.Instances.OfType<Instance.Variable>().Any())
                     {
                         impl += RenderLines(state,
-                            "--Internal variables",
-                            ""
+                            "--Internal variables"
                         );
 
                         impl += RenderLines(
@@ -1911,7 +1970,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     }
 
                     impl += RenderLines(state,
-                        "variable reentry_guard: STD_LOGIC;",
+                        "variable reentry_guard: BOOLEAN;",
                         "",
                         "-- #### USER-DATA-NONCLOCKEDVARIABLES-START",
                         "-- #### USER-DATA-NONCLOCKEDVARIABLES-END",
@@ -1933,6 +1992,8 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                         using(state.Indenter())
                         {
+                            // TODO: Nothing gets out here ....
+
                             // Emit reset statements
                             RenderStatements(
                                 state, 
@@ -1955,8 +2016,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                             );
 
                             impl += RenderLines(state,
-                                "reentry_guard := '0';",
-                                "FIN <= '0';",
+                                "reentry_guard := FALSE;",
+                                "FIN <= FALSE;",
                                 "",
                                 "--Initialize code here",
                                 "-- #### USER-DATA-NONCLOCKEDRESETCODE-START",
@@ -1973,7 +2034,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                             impl += RenderStatements(state, pdef.Statements);
 
                             impl += RenderLines(state,
-                                "reentry_guard:= RDY;",
+                                "reentry_guard := RDY;",
                                 "",
                                 "--Initialize code here",
                                 "-- #### USER-DATA-NONCLOCKEDINITIALIZECODE-START",
@@ -2112,6 +2173,8 @@ namespace SMEIL.Parser.Codegen.VHDL
             var parmap = process.MappedParameters.FirstOrDefault(x => x.MappedItem == bus);
             var busname = parmap == null ? bus.Name : parmap.LocalName;
 
+            // TODO: The signal names here are not reflected in code....
+            
             // Normally signals are in or out
             var signals = 
                 bus
@@ -2234,7 +2297,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     truepart 
                     + elifs 
                     + els
-                    + $"{indent}endif;";
+                    + $"{indent}end if;";
             }
         }
 
@@ -2511,7 +2574,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                 case AST.IntegerConstant integerConstant:
                     return integerConstant.Value;
                 case AST.BooleanConstant booleanConstant:
-                    return booleanConstant.Value ? "1" : "0";
+                    return booleanConstant.Value ? "TRUE" : "FALSE";
                 case AST.StringConstant stringConstant:
                     return "\"" + stringConstant.Value + "\"";
             }
@@ -2526,8 +2589,10 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>The VHDL type string</returns>
         public string RenderNativeType(DataType type)
         {
+            // We use the "clean" types internally, see:
+            // https://www.thecodingforums.com/threads/why-not-use-boolean-all-the-time-for-synthesis.22866/
             if (type.Type == AST.ILType.Bool)
-                return "STD_LOGIC";
+                return "BOOLEAN";
             else if (type.Type == AST.ILType.SignedInteger)
                 return type.BitWidth == -1 ? "INTEGER" : $"SIGNED({type.BitWidth - 1} DOWNTO 0)";
             else if (type.Type == AST.ILType.UnsignedInteger)
