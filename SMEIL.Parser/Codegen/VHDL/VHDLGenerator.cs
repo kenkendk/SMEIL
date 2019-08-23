@@ -2001,31 +2001,71 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                         using(state.Indenter())
                         {
-                            // TODO: Nothing gets out here ....
+                            var variables = process
+                                    .Instances
+                                    .OfType<Instance.Variable>();
 
                             // Emit reset statements for variables
-                            RenderStatements(
+                            impl += RenderStatements(
                                 state, 
 
-                                process
-                                    .MappedParameters
-                                    .Select(x => x.MappedItem)
-                                    .OfType<Instance.Variable>()
-                                    .Select(x => {
-                                        var resetvalue = DefaultValue(x);
-                                        var expr = TypeCast(resetvalue, x.ResolvedType);
+                                variables.Select(x => {
+                                    var resetvalue = DefaultValue(x);
+                                    var expr = TypeCast(resetvalue, x.ResolvedType);
+                                    process.AssignedTypes[expr] = x.ResolvedType;
+                                    process.AssignedTypes[resetvalue] = new DataType(x.Source.SourceToken, resetvalue.Value.Type, -1);
 
-                                        return new AST.AssignmentStatement(
-                                            pdef.SourceToken, 
-                                            x.Source.Name.AsName(),
-                                            expr
-                                        );
-                                    })
-                                    .ToArray()
+                                    return new AST.AssignmentStatement(
+                                        pdef.SourceToken, 
+                                        x.Source.Name.AsName(),
+                                        expr
+                                    );
+                                })
+                                .ToArray()
                             );
 
                             // Emit reset statements for output signals
+                            var usages = ValidationState.ItemDirection[process];
 
+                            var signals = process
+                                .MappedParameters
+                                .Where(x => x.MappedItem is Instance.Bus)
+                                .SelectMany(x => 
+                                    ((Instance.Bus)x.MappedItem).Instances
+                                        .OfType<Instance.Signal>()
+                                        .Select(y => new { 
+                                            Signal = y,
+                                            Parameter = x
+                                        })
+                                )
+                                .Where(x => usages.ContainsKey(x.Signal))
+                                .Where(x => usages[x.Signal] != Validation.ItemUsageDirection.Read)
+                                .ToArray();
+
+                            impl += RenderStatements(
+                                state,
+
+                                signals.Select(x => {
+                                    var resetvalue = DefaultValue(x.Signal);
+                                    var expr = TypeCast(resetvalue, x.Signal.ResolvedType);
+                                    process.AssignedTypes[expr] = x.Signal.ResolvedType;
+                                    process.AssignedTypes[resetvalue] = new DataType(x.Signal.Source.SourceToken, resetvalue.Value.Type, -1);
+
+                                    return new AST.AssignmentStatement(
+                                        pdef.SourceToken,
+                                        new AST.Name(
+                                            x.Signal.Source.SourceToken,
+                                            new AST.Identifier[] {
+                                                new AST.Identifier(new ParseToken(0, 0, 0, x.Parameter.LocalName)),
+                                                x.Signal.Source.Name
+                                            },
+                                            null
+                                        ),
+                                        expr
+                                    );
+                                })
+                                .ToArray()
+                            );
 
                             impl += RenderLines(state,
                                 "reentry_guard := FALSE;",
@@ -2079,7 +2119,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
-        /// Injects a typecast if the source type is another type of the target
+        /// Injects a typecast if the source type is another type than the target
         /// </summary>
         /// <param name="expression">The expression to cast</param>
         /// <param name="targettype">The destination type</param>
@@ -2099,38 +2139,84 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
+        /// Gets the default value for a type
+        /// </summary>
+        /// <param name="sourceToken">The source token used for the returned literal</param>
+        /// <param name="type">The type to get the default value for</param>
+        /// <returns>A literal expression that is the default value</returns>
+        public AST.LiteralExpression DefaultValue(ParseToken sourceToken, DataType type)
+        {
+            // Get the default value for the type
+            if (type.IsBoolean)
+                return new AST.LiteralExpression(sourceToken, new AST.BooleanConstant(sourceToken, false));
+            if (type.IsInteger)
+                return new AST.LiteralExpression(sourceToken, new AST.IntegerConstant(sourceToken, "0"));
+            if (type.IsFloat)
+                return new AST.LiteralExpression(sourceToken, new AST.FloatingConstant(sourceToken, "0", "0"));
+
+            throw new ParserException("No default value for type", type);
+        }
+
+        /// <summary>
         /// Returns the default value for the variable
         /// </summary>
-        /// <param name="variable">The variable to get the default value from</param>
+        /// <param name="signal">The variable to get the default value from</param>
         /// <returns>A literal expression that is the default value</returns>
         public AST.LiteralExpression DefaultValue(Instance.Variable variable)
         {
             var decl = variable.Source;
             if (decl.Initializer == null)
-            {
-                // Get the default value for the type
-                if (variable.ResolvedType.IsBoolean)
-                    return new AST.LiteralExpression(decl.SourceToken, new AST.BooleanConstant(decl.SourceToken, false));
-                if (variable.ResolvedType.IsInteger)
-                    return new AST.LiteralExpression(decl.SourceToken, new AST.IntegerConstant(decl.SourceToken, "0"));
-                if (variable.ResolvedType.IsFloat)
-                    return new AST.LiteralExpression(decl.SourceToken, new AST.FloatingConstant(decl.SourceToken, "0", "0"));
+                return DefaultValue(decl.SourceToken, variable.ResolvedType);
 
-                throw new ParserException("No initial value for variable", decl);
-            }
-            else
-            {
-                if (decl.Initializer is AST.LiteralExpression initExpr)
-                    return initExpr;
-            }
+            if (decl.Initializer is AST.LiteralExpression initExpr)
+                return initExpr;
 
             throw new ParserException("No initial value for variable", decl);
         }
 
         /// <summary>
+        /// Returns the default value for the signal
+        /// </summary>
+        /// <param name="signal">The signal to get the default value from</param>
+        /// <returns>A literal expression that is the default value</returns>
+        public AST.LiteralExpression DefaultValue(Instance.Signal signal)
+        {
+            var decl = signal.Source;
+            if (decl.Initializer == null)
+                return DefaultValue(decl.SourceToken, signal.ResolvedType);
+
+            if (decl.Initializer is AST.LiteralExpression initExpr)
+                return initExpr;
+
+            throw new ParserException("No initial value for variable", decl);
+        }        
+
+        /// <summary>
         /// A regex for detecting non-alpha numeric names
         /// </summary>
         private static Regex RX_ALPHANUMERIC = new Regex(@"[^\u0030-\u0039|\u0041-\u005A|\u0061-\u007A]");
+
+        /// <summary>
+        /// The list of reserved VHDL words
+        /// </summary>
+        private static readonly HashSet<string> VHDL_KEYWORDS = new HashSet<string> {
+            // Keywords in synthesized code
+            "abs", "downto", "library", "srl", "else", "procedure", "subtype", "elsif", 
+            "literal", "process", "then", "end", "loop", "to", "entity", "map", "range", 
+            "and", "exit", "mod", "record", "type", "architecture", "nand", "array", 
+            "for", "function", "next", "rem", "until", "attribute", "generate", "nor", 
+            "use", "begin", "generic", "not", "return", "variable", "block", "group", 
+            "null", "rol", "wait", "body", "of", "ror", "when", "buffer", "if", "while", 
+            "case", "in", "or", "xnor", "component", "others", "signal", "xor", 
+            "configuration", "inout", "out", "sla", "constant", "is", "package", "sll",
+            "port", "sra",
+
+            // Keywords in non-synthesized code
+            "postponed", "access", "linkage", "after", "alias", "pure", "all", 
+            "transport", "file", "register", "unaffected", "new", "reject", "units", 
+            "assert", "report", "guarded", "on", "select", "bus", "impure", "open", 
+            "severity", "with", "shared", "inertial", "disconnect", "label"
+        };
 
         /// <summary>
         /// Cleans up a VHDL component or variable name
@@ -2140,7 +2226,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         public static string SanitizeVHDLName(string name)
         {
             var r = RX_ALPHANUMERIC.Replace(name, "_");
-            if (new string[] { "register", "record", "variable", "process", "if", "then", "else", "begin", "end", "architecture", "of", "is", "wait" }.Contains(r.ToLowerInvariant()))
+            if (VHDL_KEYWORDS.Contains(r.ToLowerInvariant()))
                 r = "vhdl_" + r;
 
             while (r.IndexOf("__", StringComparison.Ordinal) >= 0)
@@ -2492,7 +2578,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                 case AST.NameExpression nameExpression:
                     return RenderName(state, nameExpression.Name);
                 case AST.TypeCast typeCastExpression:
-                    return "(" + RenderExpression(state, typeCastExpression.Expression) + ")";
+                    return RenderTypeCast(state, typeCastExpression);
                 case AST.ParenthesizedExpression parenthesizedExpression:
                     return "(" + RenderExpression(state, parenthesizedExpression.Expression) + ")";
                 case AST.UnaryExpression unaryExpression:
@@ -2687,6 +2773,61 @@ namespace SMEIL.Parser.Codegen.VHDL
             }
 
             throw new ArgumentException($"Unable to render constant of type: {constant.GetType()}");
+        }
+
+        /// <summary>
+        /// Renders a typecast expression as VHDL
+        /// </summary>
+        /// <param name="state">The state of the render</name>
+        /// <param name="typeCast">The expression to render</param>
+        /// <returns>A VHDL fragment for the expression</returns>
+        public string RenderTypeCast(RenderState state, AST.TypeCast typeCast)
+        {
+            var proc = state.ActiveScopes.OfType<Instance.Process>().Last();
+            var scope = ValidationState.LocalScopes[proc];
+
+            var destType = ValidationState.ResolveTypeName(typeCast.TargetName, scope);
+            var sourceType = proc.AssignedTypes[typeCast.Expression];
+
+            if (object.Equals(destType, sourceType))
+                return RenderExpression(state, typeCast.Expression);
+
+            // Source is an unbounded integer
+            if (sourceType.IsInteger && sourceType.BitWidth == -1)
+            {
+                if (destType.Type == ILType.SignedInteger)
+                    return $"TO_SIGNED({RenderExpression(state, typeCast.Expression)}, {destType.BitWidth})";
+                else if (destType.Type == ILType.UnsignedInteger)
+                    return $"TO_UNSIGNED({RenderExpression(state, typeCast.Expression)}, {destType.BitWidth})";
+                else if (destType.Type == ILType.Bool)
+                    return $"TO_BOOL({RenderExpression(state, typeCast.Expression)})";
+                else
+                    throw new ArgumentException($"Unable to type-cast from {sourceType} to {destType}");
+            }
+
+            // Source is a bounded integer
+            else if (sourceType.IsInteger)
+            {
+                if (destType.IsInteger)
+                {
+                    // Bounded to unbounded
+                    if (destType.BitWidth == -1)
+                        return $"TO_INTEGER({RenderExpression(state, typeCast.Expression)})";
+
+                    // Same type, just needs a resize
+                    if (sourceType.Type == destType.Type)
+                        return $"RESIZE({RenderExpression(state, typeCast.Expression)}, {destType.BitWidth})";
+
+                    // Needs resize and sign conversion
+                    return $"TO_{(destType.Type == ILType.UnsignedInteger ? "UNSIGNED" : "SIGNED")}(TO_INTEGER({RenderExpression(state, typeCast.Expression)}), {destType.BitWidth})";
+                }
+                else if (destType.Type == ILType.Bool)
+                    return $"TO_BOOL({RenderExpression(state, typeCast.Expression)})";
+                else
+                    throw new ArgumentException($"Unable to type-cast from {sourceType} to {destType}");
+            }
+
+            throw new ArgumentException($"Unable to type-cast from {sourceType} to {destType}");
         }
 
         /// <summary>
