@@ -2508,7 +2508,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             var indent = state.Indent;
             using(state.Indenter())
                 return 
-                    $"{ indent }when { RenderExpression(state, item.Item1) } => {Environment.NewLine}"
+                    $"{ indent }when {( item.Item1 == null ? "others" : RenderExpression(state, item.Item1) )} => {Environment.NewLine}"
                     + string.Join(Environment.NewLine, item.Item2.Select(x => RenderStatement(state, x)));
         }
 
@@ -2525,7 +2525,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                 return 
                     $"{indent}case { RenderExpression(state, switchStatement.Value) } is { Environment.NewLine }"
                     + string.Join(Environment.NewLine, switchStatement.Cases.Select(x => RenderSwitchCase(state, x)))
-                    + $"{indent}end case;";
+                    + $"{Environment.NewLine}{indent}end case;";
         }
 
         /// <summary>

@@ -419,7 +419,7 @@ namespace SMEIL.Parser
 
                 x => new Tuple<AST.Expression, AST.Statement[]>(
                     x.FirstMapper(expression),
-                    x.InvokeFirstLevelMappers(statement).ToArray()
+                    x.FindSubMatch(0, 3).InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
 
@@ -428,20 +428,31 @@ namespace SMEIL.Parser
                     "switch",
                     expression,
                     "{",
-                    switchCase,
-                    "}",
-                    Optional(
+                    Composite(
+                        switchCase,
+                        Sequence(switchCase)
+                    ),
+                    Optional(                        
                         Composite(
-                            statement,
-                            Sequence(statement)
+                            "default",
+                            "{",
+                            Sequence(statement),
+                            "}"
                         )
-                    )
+                    ),
+                    "}"
                 ),
 
                 x => 
                 {
-                    var defaultCase = x.FindSubMatch(0, 5).InvokeFirstLevelMappers(statement).ToArray();
-                    var cases = x.InvokeFirstLevelMappers(switchCase);
+                    var defaultCase = x.FindSubMatch(0, 4, 0, 2).InvokeFirstLevelMappers(statement).ToArray();
+                    // Grab the mandatory, then the optional
+                    // we cannot use the normal recursive mapper as we may have embedded switch statements
+                    var cases = 
+                        x.FindSubMatch(0, 3).InvokeFirstLevelMappers(switchCase)
+                            .Concat(x.FindSubMatch(0, 3, 1).InvokeFirstLevelMappers(switchCase)
+                        );
+
                     if (defaultCase.Length > 0)
                         cases = cases.Concat(new[] { new Tuple<AST.Expression, AST.Statement[]>(null, defaultCase) });
 

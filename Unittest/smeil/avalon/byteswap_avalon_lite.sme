@@ -9,38 +9,42 @@ type avlite: {
 
 
 proc byteswap(in upstream: avlite, out downstream: avlite)
-    var value_ready : bool = false;
+    var state : int = 0;
 {
-    // Check if we are waiting to send a value
-    if (value_ready)
-    {
-        // If we are waiting, keep waiting until we have sent it
-        if (downstream.ready)
-        {
-            // The output has been consumed
+    switch state {
+        case 4 {
+            // Data has been consumed
             downstream.valid = false;
-            
-            // We can read again
-            value_ready = false;
-            upstream.ready = true;
+            state = 0;            
         }
-    }
-    else
-    {
-        // Keep waiting until we get a value
-        if (upstream.valid)
-        {
-            // Output the value
-            downstream.value = upstream.value << 16 | upstream.value >> 16;
-            // Signal that it can be read
+        case 3 {
+            // Once the data has been read, wait one clock
+            if (downstream.ready) {
+                state = 4;
+            }
+        }
+        case 2 {
+            // We can now write
             downstream.valid = true;
-
-            // See if we need to block in next cycle
-            value_ready = downstream.ready;
-            // We can read again, if this value is consumed
-            upstream.ready = downstream.ready;
+            if (downstream.ready) {
+                state = 4;
+            } else {
+                state = 3;
+            }
         }
-    }    
+        case 1 {
+            // Wait for input
+            if (upstream.valid) {
+                downstream.value = upstream.value << 16 | upstream.value >> 16;
+                upstream.ready = false;
+                state = 2;
+            }
+        }
+        default {
+            upstream.ready = true;
+            state = 1;
+        }         
+    }
 }
 
 network main (in source: avlite, out target: avlite) {
