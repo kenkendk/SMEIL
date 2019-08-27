@@ -214,7 +214,15 @@ namespace SMEIL.Parser
                     new AST.TypeName(x.FirstMapper(name), null),
                     true
                 )
-            );            
+            );
+
+            // Simple wrapping expressions
+            var nameExpression = Mapper(name, x => new AST.NameExpression(x.Item, x.FirstMapper(name)));
+            var literalExpression = Mapper(literal, x => new AST.LiteralExpression(x.Item, x.FirstMapper(literal)));
+            var parenthesisExpression = Mapper(Composite("(", expression, ")"), x => new AST.ParenthesizedExpression(x.Item, x.FirstMapper(expression)));
+
+            // A simple expression is either a literal or a name
+            var simpleExpression = Mapper(Choice(literalExpression, nameExpression), x => x.InvokeDerivedMappers<AST.Expression>().First());
 
             // Create expressions to capture the operator precedence
             var binopPrecedence = new string[][] {
@@ -231,7 +239,7 @@ namespace SMEIL.Parser
             // The BNF simply has "expression ::= expression op expression",
             // but this is a left-recursive non-terminal and does not encode 
             // operator precedence.
-            // To solve this, we re-factor the each precedence level
+            // To solve this, we re-factor each precedence level
             // to avoid the left-recursive non-terminal,
             // and chain the precedence levels
 
@@ -240,9 +248,8 @@ namespace SMEIL.Parser
                 Choice(new BNF.BNFItem[] {
                     typeCastExpression,
                     unaryExpresssion,
-                    Mapper(Composite("(", expression, ")"), x => new AST.ParenthesizedExpression(x.Item, x.FirstMapper(expression))),
-                    Mapper(literal, x => new AST.LiteralExpression(x.Item, x.FirstMapper(literal))),
-                    Mapper(name, x => new AST.NameExpression(x.Item, x.FirstMapper(name)))
+                    parenthesisExpression,
+                    simpleExpression,
                 }),
                 x => x.FirstDerivedMapper<AST.Expression>()
             );
@@ -411,14 +418,14 @@ namespace SMEIL.Parser
             var switchCase = Mapper(
                 Composite(
                     "case",
-                    expression,
+                    simpleExpression,
                     "{",
                     Sequence(statement),
                     "}"                    
                 ),
 
                 x => new Tuple<AST.Expression, AST.Statement[]>(
-                    x.FirstMapper(expression),
+                    x.FirstMapper(simpleExpression),
                     x.FindSubMatch(0, 3).InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
@@ -426,7 +433,7 @@ namespace SMEIL.Parser
             var switchStatement = Mapper(
                 Composite(
                     "switch",
-                    expression,
+                    simpleExpression,
                     "{",
                     Composite(
                         switchCase,
@@ -458,7 +465,7 @@ namespace SMEIL.Parser
 
                     return new AST.SwitchStatement(
                         x.Item,
-                        x.FirstMapper(expression),
+                        x.FirstMapper(simpleExpression),
                         cases.ToArray()
                     );
                 }
@@ -645,7 +652,9 @@ namespace SMEIL.Parser
                 x => new AST.EnumField(
                     x.Item, 
                     x.FirstMapper(ident), 
-                    x.FirstMapper(int32literal)
+                    x.FindSubMatch(0, 1, 2) == null
+                        ? -1 
+                        : x.FirstOrDefaultMapper(int32literal)
                 )
             );
 

@@ -66,7 +66,7 @@
 
   <range> ::= `range' <expression> `to' <expression>
 
-  <enum> ::= `enum' <ident> \\ `{' <enum-field> \{ `,' <enum-field>  \} `}' `;'
+  <enum-decl> ::= `enum' <ident> \\ `{' <enum-field> \{ `,' <enum-field>  \} `}' `;'
 
   <enum-field> ::= <ident> [ `=' <integer> ]
   
@@ -101,14 +101,14 @@
     \} [ <else-block> ]
   \alt `for' <ident> `=' <expression> `to' <expression> \\ `{' \{ <statement> \} `}'
   %\alt `while' <expression> `{' \{ <statement> \} `}'
-  \alt `switch' <expression> \\ `{' <switch-case> \{ <switch-case> \} [ `default' `{' <statement> \{ <statement> \} `}' ] `}'
+  \alt `switch' <simple-expression> \\ `{' <switch-case> \{ <switch-case> \} [ `default' `{' <statement> \{ <statement> \} `}' ] `}'
   \alt `trace' `(' <format-string> \{ `,' <expression> \} `)'`;'
   \alt `assert' `(' <expression> [ `,' <string-literal> ] `)'`;'
   %\alt `barrier' `;'
   \alt `break' `;'
   %\alt `return' [ <expression> ] `;'
 
-  <switch-case> ::= `case' <expression> `{' \{ <statement> \} `}'
+  <switch-case> ::= `case' <simple-expression> `{' \{ <statement> \} `}'
 
   <elif-block> ::= `elif `(' <expression> `)' `{' \{ <statement> \} `}'
 
@@ -119,8 +119,10 @@
   <format-string-part> ::= `{}' (placeholder string)
   \alt <string-char>
 
-  <expression> ::= <name>
-  \alt <literal>
+  <simple-expression> ::= <literal>
+  \alt <name> 
+
+  <expression> ::= <simple-expression>
   \alt <expression> <bin-op> <expression>
   \alt <un-op> <expression>
   %\alt <name> `(' \{ <expression> \}  `)' (function call)
