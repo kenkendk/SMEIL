@@ -6,7 +6,7 @@ namespace SMEIL.Parser.Instance
     /// <summary>
     /// Reference to a constant value
     /// </summary>
-    [DebuggerDisplay("Literal: {Name} = {Source}")]
+    [DebuggerDisplay("Literal: {Source}")]
     public class Literal : IInstance
     {
         /// <summary>
