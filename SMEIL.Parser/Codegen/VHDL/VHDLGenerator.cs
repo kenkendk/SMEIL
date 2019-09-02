@@ -1748,7 +1748,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     $"RDY => RDY_{ProcessNames[proc]},",
                     $"FIN => FIN_{ProcessNames[proc]},",
                     $"{Config.ENABLE_SIGNAL_NAME} => {Config.ENABLE_SIGNAL_NAME},",
-                    $"{Config.RESET_SIGNAL_NAME} => RST"
+                    $"{Config.RESET_SIGNAL_NAME} => {Config.RESET_SIGNAL_NAME}"
                 );
             }
 
