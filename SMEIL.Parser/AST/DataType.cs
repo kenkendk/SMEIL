@@ -37,7 +37,11 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// A string type
         /// </summary>
-        String
+        String,
+        /// <summary>
+        /// An enumeration type
+        /// </summary>
+        Enumeration
     }
 
     /// <summary>
@@ -59,6 +63,11 @@ namespace SMEIL.Parser.AST
         /// The shape of the bus, if the type is a bus
         /// </summary>
         public readonly BusShape Shape;
+
+        /// <summary>
+        /// The source enum type, if type is an enumeration
+        /// </summary>
+        public readonly AST.EnumDeclaration EnumType;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="T:SMEIL.Parser.AST.DataType"/> class.
@@ -90,12 +99,28 @@ namespace SMEIL.Parser.AST
         /// Initializes a new instance of the <see cref="T:SMEIL.Parser.AST.DataType"/> class.
         /// </summary>
         /// <param name="token">The source token.</param>
+        /// <param name="parent">The enumeration type.</param>
+        public DataType(ParseToken token, AST.EnumDeclaration parent)
+            : base(token)
+        {
+            Type = ILType.Enumeration;
+            BitWidth = -1;
+            EnumType = parent ?? throw new ArgumentNullException(nameof(parent));
+        }
+
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="T:SMEIL.Parser.AST.DataType"/> class.
+        /// </summary>
+        /// <param name="token">The source token.</param>
         /// <param name="parent">The array data type.</param>
         public DataType(ParseToken token, DataType parent)
             : base(token)
         {
             Type = parent.Type;
             BitWidth = parent.BitWidth;
+            Shape = parent.Shape;
+            EnumType = parent.EnumType;
         }
 
         /// <summary>
@@ -127,6 +152,11 @@ namespace SMEIL.Parser.AST
         /// Gets a value indicating if the item is a value type
         /// </summary>
         public bool IsValue => !IsBus;
+
+        /// <summary>
+        /// Gets a value indicating if the item is an enumeration type
+        /// </summary>
+        public bool IsEnum => Type == ILType.Enumeration;
 
         /// <summary>
         /// Helper method to parse a token for a data type
@@ -177,6 +207,8 @@ namespace SMEIL.Parser.AST
                     if (!other.Shape.Signals.TryGetValue(n.Key, out var x) || !object.Equals(n.Value, x))
                         return false;
             }
+            else if (this.Type == ILType.Enumeration)            
+                return this.EnumType == other.EnumType;
             else if (this.Type != ILType.Bool)
             {
                 if (other.BitWidth != this.BitWidth)
@@ -201,6 +233,8 @@ namespace SMEIL.Parser.AST
                 return this.Type.GetHashCode();
             else if (this.Type == ILType.Bus)
                 return this.Type.GetHashCode() ^ this.Shape.Signals.Count ^ (this.Shape.Signals.Count == 0 ? 0 : this.Shape.Signals.Select(x => x.GetHashCode()).Aggregate((a,b) => a ^ b));
+            else if (this.Type == ILType.Enumeration)
+                return this.Type.GetHashCode() ^ this.EnumType.GetHashCode();
             else
                 return this.Type.GetHashCode() ^ this.BitWidth;
         }
@@ -224,6 +258,8 @@ namespace SMEIL.Parser.AST
                     if (BitWidth == -1)
                         return "uint";
                     return "u" + BitWidth.ToString();
+                case ILType.Enumeration:
+                    return "enum " + EnumType.Name.Name;
 
                 default:
                     return "???";

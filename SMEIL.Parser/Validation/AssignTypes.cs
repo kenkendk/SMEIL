@@ -292,6 +292,8 @@ namespace SMEIL.Parser.Validation
                 return signal.ResolvedType = state.ResolveTypeName(signal.Source.Type, scope);
             else if (symb is Instance.ConstantReference constant)
                 return constant.ResolvedType = state.ResolveTypeName(constant.Source.DataType, scope);
+            else if (symb is Instance.EnumFieldReference efr)
+                return new AST.DataType(name.SourceToken, efr.ParentType.Source);
             else if (symb is Instance.Literal literalInstance)
             {
                 if (literalInstance.Source is AST.BooleanConstant)

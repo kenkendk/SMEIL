@@ -466,6 +466,8 @@ namespace SMEIL.Parser.Validation
 
                     name = td.Alias;
                 }
+                else if (rs is AST.EnumDeclaration ed)
+                    return new DataType(ed.SourceToken, ed);
                 else
                     throw new ParserException($"Resolved {name.Alias} to {rs}, expected a type", name);
             }
@@ -522,6 +524,7 @@ namespace SMEIL.Parser.Validation
             if (decl is EnumDeclaration enumDecl)
             {
                 scope.SymbolTable.Add(enumDecl.Name.Name, decl);
+                scope.TypedefinitionTable.Add(enumDecl.Name.Name, decl);
 
                 if (!LocalScopes.TryGetValue(decl, out var subscope))
                     using(subscope = StartScope(decl))
@@ -682,6 +685,11 @@ namespace SMEIL.Parser.Validation
 
                         return new DataType(a.SourceToken, shape);
                     }
+                    break;
+
+                case ILType.Enumeration:
+                    if (b.Type == ILType.Enumeration && a.EnumType == b.EnumType)
+                        return a;
                     break;
             }
 

@@ -24,7 +24,7 @@ namespace SMEIL.Parser.Validation
         /// Creates all sub-instances for a network
         /// </summary>
         /// <param name="state">The state to use</param>
-        /// <param name="parent">The parent network instance</param>
+        /// <param name="network">The parent network instance</param>
         private Instance.Network CreateAndRegisterInstance(ValidationState state, AST.InstanceDeclaration instDecl, AST.Network network)
         {
             // Create the network instance
@@ -288,8 +288,15 @@ namespace SMEIL.Parser.Validation
             // Then add all variables and locally defined busses
             foreach (var decl in parent.ProcessDefinition.Declarations)
             {
-                if (decl is EnumDeclaration)
-                    continue; // No instance needed
+                if (decl is EnumDeclaration en)
+                {
+                    var e = new Instance.EnumTypeReference(en);
+                    scope.SymbolTable.Add(e.Name, e);
+                    using (state.StartScope(e))
+                        CreateAndRegisterInstance(state, e);
+                    parent.Instances.Add(e);
+
+                }
                 else if (decl is FunctionDeclaration)
                     continue; // No instance needed
                 else if (decl is ConstantDeclaration)
@@ -339,9 +346,33 @@ namespace SMEIL.Parser.Validation
                 var s = new Instance.Signal(parent, signal);
                 scope.SymbolTable.Add(s.Name, s);
                 parent.Instances.Add(s);
-
             }
         }
 
+        /// <summary>
+        /// Creates all enum fields for an enum
+        /// </summary>
+        /// <param name="state">The state to use</param>
+        /// <param name="parent">The enum instance</param>
+        private void CreateAndRegisterInstance(ValidationState state, Instance.EnumTypeReference parent)
+        {
+            var scope = state.CurrentScope;
+
+            var cur = 0;
+            foreach (var field in parent.Source.Fields)
+            {
+                var ix = field.Value;
+                if (ix < 0)
+                    ix = cur;
+
+                var s = new Instance.EnumFieldReference(parent, field, ix);
+
+                parent.Fields.Add(field.Name.Name, s);
+                scope.SymbolTable.Add(field.Name.Name, s);
+                parent.Instances.Add(s);
+
+                cur = ix + 1;
+            }
+        }
     }
 }
