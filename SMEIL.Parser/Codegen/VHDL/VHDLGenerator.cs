@@ -2347,10 +2347,12 @@ namespace SMEIL.Parser.Codegen.VHDL
                 bus
                 .Instances
                 .OfType<Instance.Signal>()
-                .Where(x => usages.ContainsKey(x))
                 .SelectMany(x =>
                 {
-                    var d = usages[x];
+                    // We also render unused signals to ensure the VHDL follows the SMEIL signature
+                    if (!usages.TryGetValue(x, out var d))
+                        d = parmap.MatchedParameter.Direction != ParameterDirection.In ? Validation.ItemUsageDirection.Write : Validation.ItemUsageDirection.Read;
+
                     if (d == Validation.ItemUsageDirection.Both)
                     {
                         return new[] {
