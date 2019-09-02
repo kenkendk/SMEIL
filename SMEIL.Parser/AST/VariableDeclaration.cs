@@ -35,7 +35,7 @@ namespace SMEIL.Parser.AST
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
             Type = type ?? throw new ArgumentNullException(nameof(type));
-            Initializer = initializer ?? throw new ArgumentNullException(nameof(initializer));
+            Initializer = initializer;
             Range = range;
         }
     }
