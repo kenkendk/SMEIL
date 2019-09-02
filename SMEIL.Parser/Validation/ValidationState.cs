@@ -361,6 +361,11 @@ namespace SMEIL.Parser.Validation
                 }
                 else
                 {
+                    // No match, look for case sensitive-match, could do hamming distance suggestions
+                    var closest = scope.SymbolTable.Keys.Where(x => string.Equals(x, id.Name, StringComparison.OrdinalIgnoreCase)).FirstOrDefault();
+                    if (closest != null)
+                        throw new ParserException($"No such item \"{id.Name}\" in item {string.Join(".", matched)} (did you mean \"{closest}\"?)", id);
+
                     throw new ParserException($"No such item \"{id.Name}\" in item {string.Join(".", matched)}", id);
                 }
 
