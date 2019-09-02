@@ -64,6 +64,42 @@ namespace SMEIL.Parser.Validation
                 }
             }
 
+            // Handle variables not used in normal expressions
+            foreach (var item in instance.ProcessDefinition.All().OfType<AST.Statement>())            
+            {
+                if (item.Current is AST.AssignmentStatement assignmentStatement)
+                {
+                    var symbol = state.FindSymbol(assignmentStatement.Name, scope);
+                    if (symbol is Instance.Variable var)
+                    {
+                        if (var.ResolvedType == null)
+                            var.ResolvedType = state.ResolveTypeName(var.Source.Type, scope);
+                    }
+                    else if (symbol is Instance.Signal sig)
+                    {
+                        if (sig.ResolvedType == null)
+                            sig.ResolvedType = state.ResolveTypeName(sig.Source.Type, scope);
+                    }
+                    else if (symbol == null)
+                        throw new ParserException($"Symbol not found: \"{assignmentStatement.Name.AsString}\"", assignmentStatement.Name.SourceToken);
+                    else
+                        throw new ParserException($"Can only assign to signal or variable, {assignmentStatement.Name.AsString} is {symbol.GetType().Name}", assignmentStatement.Name.SourceToken);
+                }
+                else if (item.Current is AST.ForStatement forStatement)
+                {
+                    var symbol = state.FindSymbol(forStatement.Variable, scope);
+                    if (symbol is Instance.Variable var)
+                    {
+                        if (var.ResolvedType == null)
+                            var.ResolvedType = state.ResolveTypeName(var.Source.Type, scope);
+                    }
+                    else if (symbol == null)
+                        throw new ParserException($"Symbol not found: \"{forStatement.Variable.Name}\"", forStatement.Variable.SourceToken);
+                    else
+                        throw new ParserException($"Can only use variable as the counter in a for loop, {forStatement.Variable.Name} is {symbol.GetType().Name}", forStatement.Variable.SourceToken);
+                }
+            }
+
             // We are only concerned with expressions, working from leafs and up
             // At this point all literals, variables, signals, etc. should have a resolved type
             foreach (var item in instance.ProcessDefinition.All(AST.TraverseOrder.DepthFirstPostOrder).OfType<AST.Expression>())
