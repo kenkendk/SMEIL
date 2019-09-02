@@ -64,6 +64,21 @@ namespace SMEIL.Parser.Codegen.VHDL
         public readonly Dictionary<Instance.Process, string> ProcessNames;
 
         /// <summary>
+        /// The assigned enum names
+        /// </summary>
+        public readonly Dictionary<AST.EnumDeclaration, string> EnumNames;
+
+        /// <summary>
+        /// The assigned enum names
+        /// </summary>
+        public readonly Dictionary<AST.EnumField, string> EnumFieldNames;
+
+        /// <summary>
+        /// The list of all busses
+        /// </summary>
+        public readonly List<Instance.EnumTypeReference> AllEnums;
+
+        /// <summary>
         /// The list of all busses
         /// </summary>
         public readonly List<Instance.Bus> AllBusses;
@@ -191,8 +206,41 @@ namespace SMEIL.Parser.Codegen.VHDL
                 .Select(x => new
                 {
                     Key = x,
-                    Name = x.Name + (buscounters[x.Source].Count == 1 ? "" : "_" + (buscounters[x.Source].IndexOf(x) + 1).ToString())
+                    Name = SanitizeVHDLName(x.Name + (buscounters[x.Source].Count == 1 ? "" : "_" + (buscounters[x.Source].IndexOf(x) + 1).ToString()))
                 })
+                .ToDictionary(x => x.Key, x => x.Name);
+
+
+            AllEnums = validationstate
+                .AllInstances
+                .OfType<Instance.EnumTypeReference>()
+                .Concat(validationstate.AllInstances.OfType<Instance.EnumFieldReference>().Select(x => x.ParentType))
+                .GroupBy(x => x.Source)
+                .Select(y => y.First())
+                .ToList();
+
+
+            // Figure out which enums share a name
+            var enumcounters = AllEnums.GroupBy(x => x.Name).ToDictionary(x => x.Key, x => x.ToList());
+
+            // Give the instances names, suffixed with the instance number if there are more than one
+            EnumNames = AllEnums
+                .Select(x => new
+                {
+                    Key = x,
+                    Name = SanitizeVHDLName(x.Name + (enumcounters[x.Name].Count == 1 ? "" : "_" + (enumcounters[x.Name].IndexOf(x) + 1).ToString()))
+                })
+                .ToDictionary(x => x.Key.Source, x => x.Name);
+
+            EnumFieldNames = AllEnums
+                .SelectMany(x => 
+                    x.Instances
+                        .OfType<Instance.EnumFieldReference>()
+                        .Select(y => new {
+                            Key = y.Source,
+                            Name = SanitizeVHDLName(EnumNames[x.Source] + "_" + y.Name)
+                        })
+                )
                 .ToDictionary(x => x.Key, x => x.Name);
 
             // List of instantiated processes
@@ -220,7 +268,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     x.Value.Select(
                         y => new {
                             Key = y,
-                            Name = x.Key + (proccounters[x.Key].Count == 1 ? "" : "_" + (proccounters[x.Key].IndexOf(y) + 1).ToString())
+                            Name = SanitizeVHDLName(x.Key + (proccounters[x.Key].Count == 1 ? "" : "_" + (proccounters[x.Key].IndexOf(y) + 1).ToString()))
                         }
                     )
                 )
@@ -457,33 +505,31 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                     decl += RenderLines(state,
                         consts.Select(c => 
-                            $"constant {c.Name}: {c.DataType} := {c.Expression};"
+                            $"constant {c.Name}: {c.DataType} := {RenderExpression(state, c.Expression)};"
                         )
                     );
                 }
 
-                // var enums = ValidationState.AllInstances
-                //     .OfType<Instance.Variable>()
-                //     .Select(x => x.Source)
-                //     .Select(x => x.Type.IntrinsicType)
-                //     .Where(x => x != null)
-                //     .Select(x => x.IsEnum)
-                //     .Distinct();
+                if (AllEnums.Any())
+                {
+                    decl += RenderLines(state,
+                        "-- Enum definitions",
+                        ""
+                    );
 
-                // if (enums.Any())
-                // {
-                //     decl += RenderLines(state,
-                //         "-- Enum definitions",
-                //         ""
-                //     );
+                    decl += RenderLines(state,
+                        AllEnums.SelectMany(c =>
+                            new string[] {
+                                $"type {EnumNames[c.Source]} is ({string.Join(", ", c.Instances.OfType<Instance.EnumFieldReference>().Select(x => EnumFieldNames[x.Source]))});",
+                                $"pure function str(b: {EnumNames[c.Source]}) return string;",
+                                $"pure function TO_INTEGER(b: {EnumNames[c.Source]}) return integer;",
+                                $"pure function TO_{EnumNames[c.Source]}(b: integer) return {EnumNames[c.Source]};",
+                                ""
+                            }
+                        )
+                    );
 
-                //     decl += RenderLines(state,
-                //         enums.Select(c =>
-                //             $"type {c.Name} is {string.Join(", ", c.Values)};"
-                //         )
-                //     );
-
-                // }
+                }
                 
 
             }
@@ -497,7 +543,106 @@ namespace SMEIL.Parser.Codegen.VHDL
                 ""
             );
 
-            return decl;
+            if (AllEnums.Any())
+            {
+                decl += RenderLines(state,
+                    "package body CUSTOM_TYPES is"
+                );
+
+                using (state.Indenter())
+                {
+                    foreach (var enm in AllEnums)
+                    {
+                        var name = EnumNames[enm.Source];
+
+                        decl += RenderLines(state,
+                            $"pure function str(b: {name}) return string is",
+                            "begin",
+                            $"    return {name}'image(b);",
+                            "end str;"
+                        );
+
+                        decl += RenderLines(state,
+                            $"pure function TO_INTEGER(b: {name}) return integer is",
+                            "variable s: integer;",
+                            "begin"
+                        );
+
+                        using(state.Indenter())
+                        {
+                            decl += RenderLines(state,
+                                "case b is"                                
+                            );
+
+                            using (state.Indenter())
+                            {
+                                decl += RenderLines(state,
+                                    enm.Instances.OfType<Instance.EnumFieldReference>().Select(x =>
+                                        $"when {EnumFieldNames[x.Source]} => s := {x.Value};"
+                                    )
+                                );
+
+                                decl += RenderLines(state,
+                                    "when others => s := -1;"
+                                );
+                            }
+
+                            decl += RenderLines(state,
+                                "end case;",
+                                "return s;"
+                            );
+                        }
+
+                        decl += RenderLines(state,
+                            "end TO_INTEGER;",
+                            ""
+                        );
+
+                        decl += RenderLines(state,
+                            $"pure function TO_{name}(b: integer) return {name} is",
+                            $"variable s: {name};",
+                            "begin"
+                        );
+
+                        using (state.Indenter())
+                        {
+                            decl += RenderLines(state,
+                                "case b is"
+                            );
+
+                            using (state.Indenter())
+                            {
+                                decl += RenderLines(state,
+                                    enm.Instances.OfType<Instance.EnumFieldReference>().Select(x =>
+                                        $"when {x.Value} => s := {EnumFieldNames[x.Source]};"
+                                    )
+                                );
+
+                                decl += RenderLines(state,
+                                    $"when others => s := {EnumFieldNames[enm.Instances.OfType<Instance.EnumFieldReference>().First().Source]};"
+                                );
+                            }
+
+                            decl += RenderLines(state,
+                                "end case;",
+                                "return s;"
+                            );
+                        }
+
+                        decl += RenderLines(state,
+                            $"end TO_{name};",
+                            ""
+                        );                        
+                    }
+                }
+
+                decl += RenderLines(state,
+                    "end package body CUSTOM_TYPES;"
+                );
+            }
+
+
+                return decl;
         }
 
         /// <summary>
@@ -2010,10 +2155,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                                 state, 
 
                                 variables.Select(x => {
-                                    var resetvalue = DefaultValue(x);
-                                    var expr = TypeCast(resetvalue, x.ResolvedType);
+                                    var resetvalue = DefaultValue(state, x);
+                                    var expr = TypeCast(state, resetvalue.Item2, x.ResolvedType);
                                     process.AssignedTypes[expr] = x.ResolvedType;
-                                    process.AssignedTypes[resetvalue] = new DataType(x.Source.SourceToken, resetvalue.Value.Type, -1);
+                                    process.AssignedTypes[resetvalue.Item2] = resetvalue.Item1;
 
                                     return new AST.AssignmentStatement(
                                         pdef.SourceToken, 
@@ -2047,9 +2192,9 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                                 signals.Select(x => {
                                     var resetvalue = DefaultValue(x.Signal);
-                                    var expr = TypeCast(resetvalue, x.Signal.ResolvedType);
+                                    var expr = TypeCast(state, resetvalue.Item2, x.Signal.ResolvedType);
                                     process.AssignedTypes[expr] = x.Signal.ResolvedType;
-                                    process.AssignedTypes[resetvalue] = new DataType(x.Signal.Source.SourceToken, resetvalue.Value.Type, -1);
+                                    process.AssignedTypes[resetvalue.Item2] = resetvalue.Item1;
 
                                     return new AST.AssignmentStatement(
                                         pdef.SourceToken,
@@ -2123,19 +2268,46 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// </summary>
         /// <param name="expression">The expression to cast</param>
         /// <param name="targettype">The destination type</param>
-        /// <param name="sourcetype">The source type</param>
+        /// <param name="state">The render state</param>
         /// <returns>An expression that could be a type cast</returns>
-        public AST.Expression TypeCast(AST.LiteralExpression expression, DataType targettype)
+        public AST.Expression TypeCast(RenderState state, AST.Expression expression, DataType targettype)
         {
-            if (expression.Value is AST.BooleanConstant && targettype.IsBoolean)
-                return expression;
-            else if (expression.Value is AST.FloatingConstant && targettype.IsFloat)
-                return expression;
-            
-            if (expression.Value is AST.IntegerConstant)
-                return new AST.TypeCast(expression, targettype, false);
+            if (expression is LiteralExpression literalExpression) 
+            {
+                if (literalExpression.Value is AST.BooleanConstant && targettype.IsBoolean)
+                    return literalExpression;
+                else if (literalExpression.Value is AST.FloatingConstant && targettype.IsFloat)
+                    return literalExpression;
+                
+                if (literalExpression.Value is AST.IntegerConstant)
+                    return new AST.TypeCast(literalExpression, targettype, false);
 
-            throw new ParserException($"Unable to cast expression with {expression.Value} to {targettype}", expression);
+                throw new ParserException($"Unable to cast expression {literalExpression.Value} to {targettype}", expression);
+            }
+            else if (expression is NameExpression nameExpression)
+            {
+                var process = state.ActiveScopes.OfType<Instance.Process>().Last();
+                var scope = ValidationState.LocalScopes[process];
+                var symb = ValidationState.FindSymbol(nameExpression.Name, scope);
+                if (symb is Instance.ConstantReference con)
+                {
+                    var sourcetype = ValidationState.InstanceType(con);
+                    if (object.Equals(sourcetype, targettype))
+                        return expression;
+                }
+                else if (symb is Instance.EnumFieldReference enm)
+                {
+                    var sourcetype = new AST.DataType(enm.Source.SourceToken, enm.ParentType.Source);
+                    if (object.Equals(sourcetype, targettype))
+                        return expression;
+
+                    if (targettype.IsNumeric)
+                        return new AST.TypeCast(nameExpression, targettype, false);
+                    
+                }             
+            }
+
+            throw new ParserException($"Unable to cast expression {expression} to {targettype}", expression);
         }
 
         /// <summary>
@@ -2144,34 +2316,90 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <param name="sourceToken">The source token used for the returned literal</param>
         /// <param name="type">The type to get the default value for</param>
         /// <returns>A literal expression that is the default value</returns>
-        public AST.LiteralExpression DefaultValue(ParseToken sourceToken, DataType type)
+        public Tuple<AST.DataType, AST.Expression> DefaultValue(ParseToken sourceToken, DataType type)
         {
             // Get the default value for the type
             if (type.IsBoolean)
-                return new AST.LiteralExpression(sourceToken, new AST.BooleanConstant(sourceToken, false));
+                return new Tuple<DataType, Expression>(
+                    new AST.DataType(sourceToken, ILType.Bool, 1),
+                    new AST.LiteralExpression(sourceToken, new AST.BooleanConstant(sourceToken, false))
+                );
+
             if (type.IsInteger)
-                return new AST.LiteralExpression(sourceToken, new AST.IntegerConstant(sourceToken, "0"));
+                return new Tuple<DataType, Expression>(
+                    new DataType(sourceToken, ILType.SignedInteger, -1),
+                    new AST.LiteralExpression(sourceToken, new AST.IntegerConstant(sourceToken, "0"))
+                );
+
             if (type.IsFloat)
-                return new AST.LiteralExpression(sourceToken, new AST.FloatingConstant(sourceToken, "0", "0"));
+                return new Tuple<DataType, Expression>(
+                    new DataType(sourceToken, ILType.Float, -1),
+                    new AST.LiteralExpression(sourceToken, new AST.FloatingConstant(sourceToken, "0", "0"))
+                );
+
+            if (type.IsEnum)
+                return new Tuple<DataType, Expression>(
+                    new DataType(sourceToken, type.EnumType),
+                    new AST.NameExpression(
+                        sourceToken, 
+                        new Name(sourceToken, new [] { 
+                            type.EnumType.Name,
+                            type.EnumType.Fields.First().Name
+                        }, 
+                        null))
+                );
 
             throw new ParserException("No default value for type", type);
         }
 
         /// <summary>
-        /// Returns the default value for the variable
+        /// Returns the default value and type for the variable
         /// </summary>
-        /// <param name="signal">The variable to get the default value from</param>
-        /// <returns>A literal expression that is the default value</returns>
-        public AST.LiteralExpression DefaultValue(Instance.Variable variable)
+        /// <param name="state">The current state</param>
+        /// <param name="variable">The variable to get the default value from</param>
+        /// <returns>An expression that is the default value</returns>
+        public Tuple<AST.DataType, AST.Expression> DefaultValue(RenderState state, Instance.Variable variable)
         {
             var decl = variable.Source;
             if (decl.Initializer == null)
                 return DefaultValue(decl.SourceToken, variable.ResolvedType);
 
             if (decl.Initializer is AST.LiteralExpression initExpr)
-                return initExpr;
+                return new Tuple<DataType, Expression>(new DataType(decl.SourceToken, initExpr.Value.Type, -1), initExpr);
 
-            throw new ParserException("No initial value for variable", decl);
+            if (decl.Initializer is AST.NameExpression nameExpr)
+            {
+                var process = state.ActiveScopes.OfType<Instance.Process>().Last();
+                var scope = ValidationState.LocalScopes[process];
+                var symb = ValidationState.FindSymbol(nameExpr.Name, scope);
+                if (symb is Instance.ConstantReference con)
+                {
+                    // TODO: Return a name expression that maps to the constant
+                    return new Tuple<DataType, Expression>(
+                        con.ResolvedType,
+                        con.Source.Expression
+                    );
+                }
+                else if (symb is Instance.EnumFieldReference enm)
+                {
+                    return new Tuple<DataType, Expression>(
+                        new AST.DataType(decl.Initializer.SourceToken, enm.ParentType.Source),
+                        new AST.NameExpression(
+                            decl.Initializer.SourceToken,
+                            new AST.Name(
+                                decl.Initializer.SourceToken,
+                                new Identifier[] {
+                                    new AST.Identifier(new ParseToken(0, 0, 0, enm.ParentType.Name)),
+                                    new AST.Identifier(new ParseToken(0, 0, 0, enm.Name)),
+                                },
+                                null
+                            )
+                        )
+                    );
+                }
+            }
+
+            throw new ParserException("Initial value for variable must be a literal", decl);
         }
 
         /// <summary>
@@ -2179,14 +2407,14 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// </summary>
         /// <param name="signal">The signal to get the default value from</param>
         /// <returns>A literal expression that is the default value</returns>
-        public AST.LiteralExpression DefaultValue(Instance.Signal signal)
+        public Tuple<AST.DataType, AST.Expression> DefaultValue(Instance.Signal signal)
         {
             var decl = signal.Source;
             if (decl.Initializer == null)
                 return DefaultValue(decl.SourceToken, signal.ResolvedType);
 
             if (decl.Initializer is AST.LiteralExpression initExpr)
-                return initExpr;
+                return new Tuple<DataType, Expression>(new DataType(decl.SourceToken, initExpr.Value.Type, -1) , initExpr);
 
             throw new ParserException("No initial value for variable", decl);
         }        
@@ -2243,7 +2471,6 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for declaring a variable</returns>
         public string RenderVariable(RenderState state, Instance.Variable variable)
         {
-            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
             var name = GetUniqueLocalName(state, variable);
 
             return $"variable {name}: {RenderNativeType(variable.ResolvedType)};";
@@ -2747,6 +2974,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                 localname = GetUniqueLocalName(state, null, signal, true, null);
             else if (symbol is Instance.Variable variable)
                 localname = GetUniqueLocalName(state, variable);
+            else if (symbol is Instance.EnumFieldReference enm)
+                localname = EnumNames[enm.ParentType.Source] + "_" + enm.Name;
             else
                 throw new ParserException("Unexpected type", name);
 
@@ -2851,6 +3080,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                 throw new Exception("Float types are not yet supported");
             else if (type.Type == AST.ILType.Bus)
                 throw new Exception("Cannot declare a bus type");
+            else if (type.Type == AST.ILType.Enumeration)
+                return EnumNames[type.EnumType];
 
             throw new Exception($"Unexpected type: {type}");
         }
@@ -2872,6 +3103,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                 throw new Exception("Float types are not yet supported");
             else if (type.Type == AST.ILType.Bus)
                 throw new Exception("Cannot declare a bus type");
+            else if (type.Type == AST.ILType.Enumeration)
+                throw new Exception("Cannot export an enumeration type");
 
             throw new Exception($"Unexpected type: {type}");
         }        
