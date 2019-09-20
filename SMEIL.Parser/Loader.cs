@@ -135,7 +135,8 @@ namespace SMEIL.Parser
                                         null,
                                         null
                                     )
-                                ).ToArray()
+                                ).ToArray(),
+                                null
                         )
                     );
 

@@ -728,18 +728,28 @@ namespace SMEIL.Parser
                 Composite(
                     "bus",
                     ident,
-                    "{",
-                    busSignalDeclaration,
-                    Sequence(busSignalDeclaration),
-                    "}",
+                    Choice(
+                        Composite(
+                            "{",
+                            busSignalDeclaration,
+                            Sequence(busSignalDeclaration),
+                            "}"
+                        ),
+                        typename
+                    ),
                     ";"
                 ),
 
-                x => new AST.BusDeclaration(
-                    x.Item,
-                    x.FirstMapper(ident),
-                    x.InvokeMappers(busSignalDeclaration).ToArray()
-                )
+                x => {
+                    var usingTypeName = x.FindSubMatch(0, 2, 0).Token == typename;
+                    
+                    return new AST.BusDeclaration(
+                        x.Item,
+                        x.FirstMapper(ident),
+                        usingTypeName ? null : x.FindSubMatch(0, 2).InvokeMappers(busSignalDeclaration).ToArray(),
+                        usingTypeName ? x.FindSubMatch(0, 2).FirstOrDefaultMapper(typename) : null
+                    );
+                }
             );
 
             var qualifiedspec = Composite("as", ident);

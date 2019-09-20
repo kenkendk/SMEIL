@@ -544,6 +544,21 @@ namespace SMEIL.Parser.Validation
                     using (subscope = StartScope(decl))
                     { /* Dispose immediately */}
 
+                // Resolve signals from the typename
+                if (bus.Signals == null)
+                {
+                    var signalsource = ResolveTypeName(bus.TypeName, scope);
+                    if (!signalsource.IsBus)
+                        throw new ParserException($"The typename {bus.TypeName.Alias} resolves to {signalsource.Type} but a bus type is required", bus.TypeName);
+                    bus.Signals = signalsource.Shape.Signals.Select(x => new AST.BusSignalDeclaration(
+                        bus.TypeName.SourceToken,
+                        new AST.Identifier(new ParseToken(0, 0, 0, x.Key)),
+                        x.Value,
+                        null,
+                        null
+                    )).ToArray();
+                }
+
                 foreach (var signal in bus.Signals)
                     subscope.SymbolTable.Add(signal.Name.Name, signal);
             }
@@ -576,6 +591,9 @@ namespace SMEIL.Parser.Validation
         /// <param name="scope">The scope to use</param>
         public void RegisterSymbols(AST.Module module, ScopeState scope)
         {
+            foreach (var tdef in module.TypeDefinitions)
+                scope.TypedefinitionTable.Add(tdef.Name.Name, tdef);
+
             foreach (var ent in module.Entities)
             {
                 if (ent is AST.Process process)
@@ -595,8 +613,6 @@ namespace SMEIL.Parser.Validation
                     throw new Exception($"Unexpected entity: {ent}");
             }
 
-            foreach (var tdef in module.TypeDefinitions)
-                scope.TypedefinitionTable.Add(tdef.Name.Name, tdef);
         }
 
         /// <summary>
