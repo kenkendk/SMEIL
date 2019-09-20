@@ -72,9 +72,12 @@
   
   <const-decl> ::= `const' <ident> `:' <type-name> `=' <expression> `;'
 
-  <bus-decl> ::= [ `clocked' ] `bus' <ident> \\ `\{' <bus-signal-decls> `\}'  `;'
+  <bus-decl> ::= [ `clocked' ] `bus' <ident> <bus-decl-content> `;'
 
   <func-decl> ::= `function' <ident> `(' <params> `)' `{' \{ <statement> \}  `}' `;'
+
+  <bus-decl-content> ::= `\{' <bus-signal-decls> `\}'
+  \alt <type-name>
 
   <bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
 
