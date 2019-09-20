@@ -64,12 +64,20 @@ namespace SMEIL.Parser.Validation
 
                     if (map[pos] != null)
                         throw new ParserException($"Double argument for {sourceinstance.SourceParameters[pos].Name.Name} detected", sourceinstance.SourceItem);
+                    
+                    // Extract the parameter definition
+                    var sourceparam = sourceinstance.SourceParameters[pos];
 
-                    var value = state.ResolveSymbol(p.Expression, scope);
+                    Instance.IInstance value;
+                    var tc = p.Expression as AST.TypeCast;
+
+                    if (tc != null)
+                        value = state.ResolveSymbol(tc.Expression, scope);
+                    else
+                        value = state.ResolveSymbol(p.Expression, scope);
+
                     if (value == null)
                         throw new ParserException("Unable to resolve expression", p.Expression.SourceToken);
-
-                    var sourceparam = sourceinstance.SourceParameters[pos];
 
                     var itemtype = state.InstanceType(value);
                     var parametertype = 
@@ -83,6 +91,57 @@ namespace SMEIL.Parser.Validation
                     // We need to expand both types to intrinsics to remove any type aliases that need lookups
                     var intrinsic_itemtype = state.ResolveToIntrinsics(itemtype, scope);
                     var intrinsic_parametertype = state.ResolveToIntrinsics(parametertype, scope);
+
+                    // If the input is a typecast (and required) we wire it through a process
+                    if (tc != null && !state.CanUnifyTypes(intrinsic_itemtype, intrinsic_parametertype, scope))
+                    {
+                        var typecast_target = state.ResolveToIntrinsics(state.ResolveTypeName(tc.TargetName, scope), scope);
+                        var typecast_source = sourceparam.Direction == ParameterDirection.In ? intrinsic_itemtype : intrinsic_parametertype;
+
+                        var sourceSignals = typecast_source
+                            .Shape
+                            .Signals
+                            .Select(x => x.Key)
+                            .ToHashSet();
+
+                        var shared_shape =
+                            typecast_target
+                            .Shape
+                            .Signals
+                            .Where(x => sourceSignals.Contains(x.Key))
+                            .Select(x => new AST.BusSignalDeclaration(
+                                p.SourceToken,
+                                new AST.Identifier(
+                                    new ParseToken(0, 0, 0, x.Key)
+                                ),
+                                x.Value,
+                                null,
+                                null
+                            ))
+                            .ToArray();
+
+                        if (sourceSignals.Count != shared_shape.Length)
+                            throw new ParserException($"The typecast is invalid as the names do not match", p.SourceToken);
+
+                        var proc = IdentityHelper.CreateTypeCastProcess(
+                            state,
+                            scope,
+                            p.SourceToken,
+                            tc.Expression,
+                            new AST.Name(p.SourceToken, new[] {
+                                new AST.Identifier(new ParseToken(0, 0, 0, sourceinstance.Name)),
+                                sourceparam.Name
+                            }, null).AsExpression(),
+                            shared_shape,
+                            shared_shape
+                        );
+
+                        throw new ParserException($"Typecasts inside process instantiations are not currently supported", p.SourceToken);
+                        // using (state.StartScope(proc))
+                        //     CreateAndRegisterInstance(state, proc);
+                        // parentCollection.Add(proc);
+
+                    }
 
                     // Check argument compatibility
                     if (!state.CanUnifyTypes(intrinsic_itemtype, intrinsic_parametertype, scope))
