@@ -1,0 +1,38 @@
+type tdata: { val: i32; };
+
+const ef : int = 0;
+
+function addzero(in f_inbus: tdata, const adder: int, out f_outbus: tdata)
+    var z : int = 4;
+    const a : int = 0;
+{
+        z = f_inbus.val + adder + a;
+        f_outbus.val = z;
+}
+
+proc plusone(in inbus: tdata, out outbus: tdata, const n: int)
+    function add(in f_inbus: tdata, const adder: int, out f_outbus: tdata)
+        var y : int;
+        const p : int = 0;
+    {
+        y = f_inbus.val + adder;
+        f_outbus.val = y + p;
+    }
+    const one: int = 1;
+    const zero: int = 0;
+{
+    trace("Wrote value {}", inbus.val);
+    add(inbus, 1, outbus);
+    add(inbus, one, outbus);
+    add(inbus, 2, outbus);
+    addzero(inbus, zero, outbus);
+    addzero(inbus, 0, outbus);
+    addzero(inbus, zero, outbus);
+    outbus.val = inbus.val + 0 + zero;
+}
+
+network plusone_net(in source: tdata, out dest: tdata) 
+{    
+    const t: int = 4 + ef;
+    instance plusone_inst of plusone(source, dest, t);
+}

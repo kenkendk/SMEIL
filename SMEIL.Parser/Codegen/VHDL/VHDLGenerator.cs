@@ -504,20 +504,35 @@ namespace SMEIL.Parser.Codegen.VHDL
                 ""
             );
 
-            // TODO: Merge functions, with the same signature
-            var funcs = ValidationState.AllInstances
-                .OfType<Instance.FunctionInvocation>()
-                .GroupBy(x => x); // <-- This needs to be .GroupBy(x => SignatureMap(x))
+            // Build a lookup table for each function definition
+            // so we can name the global VHDL functions with their 
+            // code location
+            var funcDecls = ValidationState.Modules.Values
+                .SelectMany(x => x.All())
+                .Where(x => x.Current is AST.FunctionDefinition)
+                .ToDictionary(
+                    x => x.Current as AST.FunctionDefinition,
+                    x => x.Parents.ToArray()
+                );
 
+            IEnumerable<IGrouping<string, Instance.FunctionInvocation>> funcs;
 
             using(state.Indenter())
             using(state.StartScope(ValidationState.TopLevel.ModuleInstance))
             {
+                funcs = ValidationState.AllInstances
+                    .OfType<Instance.FunctionInvocation>()
+                    .Where(x => funcDecls[x.Source].Last() is AST.Module)
+                    .GroupBy(x => { 
+                        using(state.StartScope(x))
+                            return RenderScopeName(funcDecls[x.Source], x.Name) + "(" + FunctionSignature(state, x) + ")";
+                    })
+                    .ToArray();
+
                 var consts = ValidationState.AllInstances
                     .OfType<Instance.ConstantReference>()
                     // Distinct on the declaration
                     .GroupBy(x => x.Source);
-
 
                 if (consts.Any())
                 {
@@ -529,7 +544,6 @@ namespace SMEIL.Parser.Codegen.VHDL
                             x => x.Current as AST.ConstantDeclaration, 
                             x => x.Parents.ToArray()
                         );
-
 
                     decl += RenderLines(state,
                         "-- Constant definitions"
@@ -545,7 +559,6 @@ namespace SMEIL.Parser.Codegen.VHDL
                     decl += RenderLines(state,
                         ""
                     );
-
                 }
 
                 // All enums are registered as global types in the VHDL
@@ -572,42 +585,29 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                 if (funcs.Any())
                 {
-                    // Build a lookup table for each function definition
-                    // so we can name the global VHDL functions with their 
-                    // code location
-                    var funcDecls = ValidationState.Modules.Values
-                        .SelectMany(x => x.All())
-                        .Where(x => x.Current is AST.FunctionDefinition)
-                        .ToDictionary(
-                            x => x.Current as AST.FunctionDefinition,
-                            x => x.Parents.ToArray()
-                        );
+                    decl += RenderLines(state, "-- Function definitions");
 
-                    // Filter so we only have static functions in the global module
-                    funcs = funcs
-                        .Where(x => funcDecls[x.Key.Source].Last() is AST.Module)
-                        .ToList();
-
-                    if (funcs.Any())
+                    foreach (var f in funcs)
                     {
-                        decl += RenderLines(state, "-- Function definitions");
+                        var fi = f.First();
+                        var parents = funcDecls[fi.Source];
+                        var name = CreateUniqueGlobalName(fi, SanitizeVHDLName(RenderScopeName(parents, fi.Name)));
+                        
+                        // Register all calls to the functions with matching arguments to the same name
+                        foreach(var fn in f.Skip(1))
+                            GlobalNames.Add(fn, name);
 
-                        foreach (var f in funcs)
+                        // Render one of the functions
+                        using (state.StartScope(fi))
                         {
-                            var source = funcDecls[f.Key.Source];
-                            var name = CreateUniqueGlobalName(f.Key, SanitizeVHDLName(RenderScopeName(source, f.Key.Name)));
-
-                            using (state.StartScope(f.Key))
-                            {
-                                decl += RenderLines(state, $"procedure {name} (");
-                                using (state.Indenter())
-                                    decl += RenderFunctionArguments(state, f.Key) + ");";
-                                decl += RenderLines(state, "");
-                            }                    
-                        }
-
-                        decl += RenderLines(state, "");
+                            decl += RenderLines(state, $"procedure {name} (");
+                            using (state.Indenter())
+                                decl += RenderFunctionArguments(state, fi) + ");";
+                            decl += RenderLines(state, "");
+                        }                    
                     }
+
+                    decl += RenderLines(state, "");
                 }
             }
 
@@ -714,8 +714,10 @@ namespace SMEIL.Parser.Codegen.VHDL
                         );                        
                     }
 
+                    decl += RenderLines(state, "-- Function implementations");
+
                     foreach (var f in funcs)
-                        decl += RenderFunctionImplementation(state, f.Key);
+                        decl += RenderFunctionImplementation(state, f.First());
                 }
 
                 decl += RenderLines(state,
@@ -735,12 +737,10 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>The rendered function</returns>
         private string RenderFunctionImplementation(RenderState state, Instance.FunctionInvocation f)
         {
+            var name = GetUniqueLocalName(state, f);
+
             using (state.StartScope(f))
             {
-                string name;
-                if (!GlobalNames.TryGetValue(f, out name))
-                    name = GetUniqueLocalName(state, f);
-
                 var res = RenderLines(state, "", $"procedure {name} (");
                 using (state.Indenter())
                 {
@@ -2270,8 +2270,21 @@ namespace SMEIL.Parser.Codegen.VHDL
                     if (funcs.Any())
                     {
                         impl += RenderLines(state, "-- Functions");
-                        foreach (var f in funcs)
-                            impl += RenderFunctionImplementation(state, f);
+
+                        var mergedFuncs = funcs
+                            .GroupBy(x => x.Name + "(" + FunctionSignature(state, x) + ")");
+
+                        foreach (var f in mergedFuncs)
+                        {
+                            // Register all merged invocations on the same name
+                            var fscope = GetLocalNameScope(state);
+                            var fname = GetUniqueLocalName(state, f.First());
+
+                            foreach (var item in f.Skip(1))
+                                fscope.LocalNames.Add(item, fname);
+
+                            impl += RenderFunctionImplementation(state, f.First());
+                        }
 
                         impl += RenderLines(state, "");
                     }
@@ -2847,9 +2860,10 @@ namespace SMEIL.Parser.Codegen.VHDL
             var name = basename;
             while (GlobalTokenCounter.TryGetValue(name, out var cnt))
             {
-                cnt++;                                
+                var newname = SanitizeVHDLName(basename + "." + cnt);
+                cnt++;
                 GlobalTokenCounter[name] = cnt;
-                name += SanitizeVHDLName(name + cnt);
+                name = newname;
             }
 
             GlobalTokenCounter.Add(name, 1);
@@ -3492,6 +3506,17 @@ namespace SMEIL.Parser.Codegen.VHDL
                 throw new Exception("Cannot export an enumeration type");
 
             throw new Exception($"Unexpected type: {type}");
-        }        
+        }
+
+        /// <summary>
+        /// Creats a comparable string that describes the argument types for a function
+        /// </summary>
+        /// <param name="state">The current render state</param>
+        /// <param name="f">The function invocation to use</param>
+        /// <returns>The comparable string</returns>
+        public string FunctionSignature(RenderState state, Instance.FunctionInvocation f)
+        {
+            return RenderFunctionArguments(state, f);
+        }    
     }
 }
