@@ -55,14 +55,14 @@ namespace SMEIL.Parser.Codegen.VHDL
             var export = generator.GenerateExportModule(rs);
             File.WriteAllText(Path.Combine(vhdlout, Path.ChangeExtension("export.vhdl", options.VHDLFileExtensions)), export);
 
+            var custtypes = generator.GenerateCustomTypes(rs);
+            File.WriteAllText(Path.Combine(vhdlout, Path.ChangeExtension("customtypes.vhdl", options.VHDLFileExtensions)), custtypes);
+
             var tdoc = generator.GenerateMainModule(rs);
             File.WriteAllText(Path.Combine(vhdlout, Path.ChangeExtension("toplevel.vhdl", options.VHDLFileExtensions)), tdoc);
 
             var tbdoc = generator.GenerateTestbench(rs);
             File.WriteAllText(Path.Combine(vhdlout, Path.ChangeExtension("testbench.vhdl", options.VHDLFileExtensions)), tbdoc);
-
-            var custtypes = generator.GenerateCustomTypes(rs);
-            File.WriteAllText(Path.Combine(vhdlout, Path.ChangeExtension("customtypes.vhdl", options.VHDLFileExtensions)), custtypes);
 
             var filenames = new Dictionary<Instance.Process, string>();
             foreach (var p in generator.AllRenderedProcesses)

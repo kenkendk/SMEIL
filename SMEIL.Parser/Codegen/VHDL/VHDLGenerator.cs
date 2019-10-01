@@ -66,17 +66,12 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <summary>
         /// The assigned enum names
         /// </summary>
-        public readonly Dictionary<AST.EnumDeclaration, string> EnumNames;
-
-        /// <summary>
-        /// The assigned enum names
-        /// </summary>
         public readonly Dictionary<AST.EnumField, string> EnumFieldNames;
 
         /// <summary>
-        /// The list of all busses
+        /// The list of all enums
         /// </summary>
-        public readonly List<Instance.EnumTypeReference> AllEnums;
+        public readonly List<AST.EnumDeclaration> AllEnums;
 
         /// <summary>
         /// The list of all busses
@@ -96,7 +91,17 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <summary>
         /// The name scopes for all processes
         /// </summary>
-        public readonly Dictionary<Instance.Process, NameScopeHelper> NameScopes = new Dictionary<Instance.Process, NameScopeHelper>();
+        public readonly Dictionary<Instance.IInstance, NameScopeHelper> NameScopes = new Dictionary<Instance.IInstance, NameScopeHelper>();
+
+        /// <summary>
+        /// The list of globally registered names, the key is the instance or declaration
+        /// </summary>
+        public readonly Dictionary<object, string> GlobalNames = new Dictionary<object, string>();
+
+        /// <summary>
+        /// A lookup table used to avoid name clashes and give name clashed items numbered name variants
+        /// </summary>
+        public readonly Dictionary<string, int> GlobalTokenCounter = new Dictionary<string, int>();
 
         /// <summary>
         /// The state passed to each render step
@@ -189,6 +194,10 @@ namespace SMEIL.Parser.Codegen.VHDL
             Config = config ?? new RenderConfig();
             ValidationState = validationstate;
 
+            // Pre-register all system-used names globally
+            foreach (var n in new string[] { "RDY", "FIN", "ENB", "reentry_guard", Config.CLOCK_SIGNAL_NAME, Config.RESET_SIGNAL_NAME })
+                GlobalTokenCounter.Add(n, 1);
+
             // List of instantiated busses
             AllBusses = validationstate
                 .AllInstances
@@ -208,37 +217,28 @@ namespace SMEIL.Parser.Codegen.VHDL
                     Key = x,
                     Name = SanitizeVHDLName(x.Name + (buscounters[x.Source].Count == 1 ? "" : "_" + (buscounters[x.Source].IndexOf(x) + 1).ToString()))
                 })
-                .ToDictionary(x => x.Key, x => x.Name);
+                .ToDictionary(x => x.Key, x => x.Name);                
 
-
+            // Extract all enums being referenced in the program
             AllEnums = validationstate
                 .AllInstances
                 .OfType<Instance.EnumTypeReference>()
                 .Concat(validationstate.AllInstances.OfType<Instance.EnumFieldReference>().Select(x => x.ParentType))
-                .GroupBy(x => x.Source)
-                .Select(y => y.First())
+                .Select(x => x.Source)
+                .Distinct()
                 .ToList();
 
+            // Register names for all enums globally
+            foreach (var e in AllEnums)
+                CreateUniqueGlobalName(e, e.Name.Name);
 
-            // Figure out which enums share a name
-            var enumcounters = AllEnums.GroupBy(x => x.Name).ToDictionary(x => x.Key, x => x.ToList());
-
-            // Give the instances names, suffixed with the instance number if there are more than one
-            EnumNames = AllEnums
-                .Select(x => new
-                {
-                    Key = x,
-                    Name = SanitizeVHDLName(x.Name + (enumcounters[x.Name].Count == 1 ? "" : "_" + (enumcounters[x.Name].IndexOf(x) + 1).ToString()))
-                })
-                .ToDictionary(x => x.Key.Source, x => x.Name);
-
+            // Build a map for each enum field
             EnumFieldNames = AllEnums
                 .SelectMany(x => 
-                    x.Instances
-                        .OfType<Instance.EnumFieldReference>()
+                    x.Fields
                         .Select(y => new {
-                            Key = y.Source,
-                            Name = SanitizeVHDLName(EnumNames[x.Source] + "_" + y.Name)
+                            Key = y,
+                            Name = CreateUniqueGlobalName(y, GlobalNames[x] + "_" + y.Name.Name)
                         })
                 )
                 .ToDictionary(x => x.Key, x => x.Name);
@@ -252,6 +252,21 @@ namespace SMEIL.Parser.Codegen.VHDL
 
             // Set up the name scopes
             foreach (var p in AllProcesses)
+                NameScopes[p] = new NameScopeHelper();
+
+            var allNetworks = validationstate
+                .AllInstances
+                .OfType<Instance.Network>()
+                .Distinct();
+
+            foreach (var n in allNetworks)
+                NameScopes[n] = new NameScopeHelper();
+
+            // Repeat for functions
+            foreach (var p in validationstate
+                .AllInstances
+                .OfType<Instance.FunctionInvocation>()
+                .Distinct())
                 NameScopes[p] = new NameScopeHelper();
 
             // Group processes by their names so we can differentiate
@@ -489,27 +504,51 @@ namespace SMEIL.Parser.Codegen.VHDL
                 ""
             );
 
+            // TODO: Merge functions, with the same signature
+            var funcs = ValidationState.AllInstances
+                .OfType<Instance.FunctionInvocation>()
+                .GroupBy(x => x); // <-- This needs to be .GroupBy(x => SignatureMap(x))
+
+
             using(state.Indenter())
+            using(state.StartScope(ValidationState.TopLevel.ModuleInstance))
             {
                 var consts = ValidationState.AllInstances
                     .OfType<Instance.ConstantReference>()
-                    .Select(x => x.Source)
-                    .Distinct();
+                    // Distinct on the declaration
+                    .GroupBy(x => x.Source);
+
 
                 if (consts.Any())
                 {
+                    // Build a lookup table for each constant
+                    var constDecls = ValidationState.Modules.Values
+                        .SelectMany(x => x.All())
+                        .Where(x => x.Current is AST.ConstantDeclaration)
+                        .ToDictionary(
+                            x => x.Current as AST.ConstantDeclaration, 
+                            x => x.Parents.ToArray()
+                        );
+
+
                     decl += RenderLines(state,
-                        "-- Constant definitions",
+                        "-- Constant definitions"
+                    );
+
+                    decl += RenderLines(state,
+                        consts.Select(x => {
+                            var source = constDecls[x.Key];
+                            var name = CreateUniqueGlobalName(x.Key, SanitizeVHDLName(RenderScopeName(source, x.Key.Name.Name)));
+                            return $"constant {name}: {RenderNativeType(x.First().ResolvedType)} := {RenderExpression(state, x.Key.Expression)};";
+                        })
+                    );
+                    decl += RenderLines(state,
                         ""
                     );
 
-                    decl += RenderLines(state,
-                        consts.Select(c => 
-                            $"constant {c.Name}: {c.DataType} := {RenderExpression(state, c.Expression)};"
-                        )
-                    );
                 }
 
+                // All enums are registered as global types in the VHDL
                 if (AllEnums.Any())
                 {
                     decl += RenderLines(state,
@@ -520,18 +559,56 @@ namespace SMEIL.Parser.Codegen.VHDL
                     decl += RenderLines(state,
                         AllEnums.SelectMany(c =>
                             new string[] {
-                                $"type {EnumNames[c.Source]} is ({string.Join(", ", c.Instances.OfType<Instance.EnumFieldReference>().Select(x => EnumFieldNames[x.Source]))});",
-                                $"pure function str(b: {EnumNames[c.Source]}) return string;",
-                                $"pure function TO_INTEGER(b: {EnumNames[c.Source]}) return integer;",
-                                $"pure function TO_{EnumNames[c.Source]}(b: integer) return {EnumNames[c.Source]};",
+                                $"type {GlobalNames[c]} is ({string.Join(", ", c.Fields.Select(x => EnumFieldNames[x]))});",
+                                $"pure function str(b: {GlobalNames[c]}) return string;",
+                                $"pure function TO_INTEGER(b: {GlobalNames[c]}) return integer;",
+                                $"pure function TO_{GlobalNames[c]}(b: integer) return {GlobalNames[c]};",
                                 ""
                             }
                         )
                     );
 
                 }
-                
 
+                if (funcs.Any())
+                {
+                    // Build a lookup table for each function definition
+                    // so we can name the global VHDL functions with their 
+                    // code location
+                    var funcDecls = ValidationState.Modules.Values
+                        .SelectMany(x => x.All())
+                        .Where(x => x.Current is AST.FunctionDefinition)
+                        .ToDictionary(
+                            x => x.Current as AST.FunctionDefinition,
+                            x => x.Parents.ToArray()
+                        );
+
+                    // Filter so we only have static functions in the global module
+                    funcs = funcs
+                        .Where(x => funcDecls[x.Key.Source].Last() is AST.Module)
+                        .ToList();
+
+                    if (funcs.Any())
+                    {
+                        decl += RenderLines(state, "-- Function definitions");
+
+                        foreach (var f in funcs)
+                        {
+                            var source = funcDecls[f.Key.Source];
+                            var name = CreateUniqueGlobalName(f.Key, SanitizeVHDLName(RenderScopeName(source, f.Key.Name)));
+
+                            using (state.StartScope(f.Key))
+                            {
+                                decl += RenderLines(state, $"procedure {name} (");
+                                using (state.Indenter())
+                                    decl += RenderFunctionArguments(state, f.Key) + ");";
+                                decl += RenderLines(state, "");
+                            }                    
+                        }
+
+                        decl += RenderLines(state, "");
+                    }
+                }
             }
 
             decl += RenderLines(state,
@@ -543,7 +620,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                 ""
             );
 
-            if (AllEnums.Any())
+            if (AllEnums.Any() || funcs.Any())
             {
                 decl += RenderLines(state,
                     "package body CUSTOM_TYPES is"
@@ -553,9 +630,11 @@ namespace SMEIL.Parser.Codegen.VHDL
                 {
                     foreach (var enm in AllEnums)
                     {
-                        var name = EnumNames[enm.Source];
+                        var name = GlobalNames[enm];
 
                         decl += RenderLines(state,
+                            $"-- Support functions for {name}",
+                            "",
                             $"pure function str(b: {name}) return string is",
                             "begin",
                             $"    return {name}'image(b);",
@@ -577,8 +656,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                             using (state.Indenter())
                             {
                                 decl += RenderLines(state,
-                                    enm.Instances.OfType<Instance.EnumFieldReference>().Select(x =>
-                                        $"when {EnumFieldNames[x.Source]} => s := {x.Value};"
+                                    enm.Fields.Select(x =>
+                                        $"when {EnumFieldNames[x]} => s := {x.Value};"
                                     )
                                 );
 
@@ -613,13 +692,13 @@ namespace SMEIL.Parser.Codegen.VHDL
                             using (state.Indenter())
                             {
                                 decl += RenderLines(state,
-                                    enm.Instances.OfType<Instance.EnumFieldReference>().Select(x =>
-                                        $"when {x.Value} => s := {EnumFieldNames[x.Source]};"
+                                    enm.Fields.Select(x =>
+                                        $"when {x.Value} => s := {EnumFieldNames[x]};"
                                     )
                                 );
 
                                 decl += RenderLines(state,
-                                    $"when others => s := {EnumFieldNames[enm.Instances.OfType<Instance.EnumFieldReference>().First().Source]};"
+                                    $"when others => s := {EnumFieldNames[enm.Fields.First()]};"
                                 );
                             }
 
@@ -634,6 +713,9 @@ namespace SMEIL.Parser.Codegen.VHDL
                             ""
                         );                        
                     }
+
+                    foreach (var f in funcs)
+                        decl += RenderFunctionImplementation(state, f.Key);
                 }
 
                 decl += RenderLines(state,
@@ -642,7 +724,83 @@ namespace SMEIL.Parser.Codegen.VHDL
             }
 
 
-                return decl;
+            return decl;
+        }
+
+        /// <summary>
+        /// Renders an implementation of a function
+        /// </summary>
+        /// <param name="state">The render state to use</param>
+        /// <param name="f">The function to implement</param>
+        /// <returns>The rendered function</returns>
+        private string RenderFunctionImplementation(RenderState state, Instance.FunctionInvocation f)
+        {
+            using (state.StartScope(f))
+            {
+                string name;
+                if (!GlobalNames.TryGetValue(f, out name))
+                    name = GetUniqueLocalName(state, f);
+
+                var res = RenderLines(state, "", $"procedure {name} (");
+                using (state.Indenter())
+                {
+                    res += RenderFunctionArguments(state, f) + $") is{Environment.NewLine}";
+
+                    if (f.Instances.OfType<Instance.Variable>().Any())
+                    {
+                        res += RenderLines(state,
+                            "-- Variables"
+                        );
+
+                        res += RenderLines(
+                            state,
+                            f.Instances
+                                .OfType<Instance.Variable>()
+                                .Select(x => RenderVariable(state, x))
+                        );
+                    }
+
+                    res += RenderLines(state, "begin");
+
+                    using(state.Indenter())
+                        res += RenderStatements(state, f.Statements);
+
+                }
+
+                res += RenderLines(state, $"end {name};");
+                return res;
+            }
+        }
+
+        /// <summary>
+        /// Returns a string representing the arguments to a function invocation
+        /// </summary>
+        /// <param name="state">The current render state</param>
+        /// <param name="f">The function to render the argument list for</param>
+        /// <returns>A string with the rendered argument list</returns>
+        private string RenderFunctionArguments(RenderState state, Instance.FunctionInvocation f)
+        {
+            return RenderLines(state,
+                string.Join(
+                $";{Environment.NewLine}{state.Indent}",
+                    f.MappedParameters
+                        .SelectMany(x =>
+                        {
+                            if (x.MappedItem is Instance.Bus bus)
+                            {
+                                var busname = GetLocalBusName(state, bus);
+                                return bus.Instances
+                                    .OfType<Instance.Signal>()
+                                    .Select(y => $"signal {GetUniqueLocalName(state, busname, y, x.MatchedParameter.Direction != ParameterDirection.Out)}: {(x.MatchedParameter.Direction == ParameterDirection.Out ? "out" : "in")} {RenderNativeType(y.ResolvedType)}");
+                            }
+                            else
+                            {
+                                return new string[] {
+                                    $"{SanitizeVHDLName(x.LocalName)}: {(x.MatchedParameter.Direction == ParameterDirection.Out ? "out" : "in")} {RenderNativeType(x.ResolvedType)}"
+                                };
+                            }
+                        })
+                )).TrimEnd();
         }
 
         /// <summary>
@@ -1665,7 +1823,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                             if (sourcebus == null || targetbus == null)
                                 throw new Exception("Incorrect process definition for identity process");
 
-                            foreach (var stm in rp.ProcessDefinition.Statements.OfType<AST.AssignmentStatement>())
+                            foreach (var stm in rp.Statements.OfType<AST.AssignmentStatement>())
                             {
                                 if (stm.Value is AST.NameExpression nme)
                                 {
@@ -1839,11 +1997,36 @@ namespace SMEIL.Parser.Codegen.VHDL
         {
             var name = ProcessNames[proc];
             var decl = RenderLines(state,
-                $"-- Entity {name} from {proc.DeclarationSource.Name.Name}",
-                $"{name}: entity work.{name}",
-                "port map ("
+                $"-- Entity {name} from {proc.SourceName}",
+                $"{name}: entity work.{name}"
             );
 
+            var genparams = proc
+                .MappedParameters
+                .Where(x => x.MappedItem is Instance.ConstantReference || x.MappedItem is Instance.Variable)
+                .Select(x => new
+                {
+                    Name = x.LocalName,
+                    Item =
+                        x.MappedItem is Instance.ConstantReference
+                        ? (x.MappedItem as Instance.ConstantReference).Source.Expression
+                        : (x.MappedItem as Instance.Variable).Source.Initializer
+                })
+                .Select(x => $"{SanitizeVHDLName(x.Name)} => {RenderExpression(state, x.Item)};")
+                .ToArray();
+
+            if (genparams.Any())
+            {
+                // Remove the trailing ; of the last entry
+                genparams[genparams.Length - 1] = genparams[genparams.Length - 1].Substring(0, genparams[genparams.Length - 1].Length - 1);
+
+                decl += RenderLines(state, "generic map (");
+                using (state.Indenter())
+                    decl += RenderLines(state, genparams);
+                decl += RenderLines(state, ")");
+            }
+
+            decl += RenderLines(state, "port map (");
             using(state.Indenter())
             {
                 foreach (var busparam in proc.MappedParameters.Where(x => x.MappedItem is Instance.Bus))
@@ -2078,6 +2261,20 @@ namespace SMEIL.Parser.Codegen.VHDL
                         "-- #### USER-DATA-SIGNALS-END",
                         ""
                     );
+
+                    var funcs = process.Instances
+                        .OfType<Instance.FunctionInvocation>()
+                        .Where(x => process.ProcessDefinition.Declarations.Contains(x.Source))
+                        .Distinct();
+
+                    if (funcs.Any())
+                    {
+                        impl += RenderLines(state, "-- Functions");
+                        foreach (var f in funcs)
+                            impl += RenderFunctionImplementation(state, f);
+
+                        impl += RenderLines(state, "");
+                    }
                 }
 
                 impl += RenderLines(state, "begin");
@@ -2286,8 +2483,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             }
             else if (expression is NameExpression nameExpression)
             {
-                var process = state.ActiveScopes.OfType<Instance.Process>().Last();
-                var scope = ValidationState.LocalScopes[process];
+                var scope = GetLocalScope(state);
                 var symb = ValidationState.FindSymbol(nameExpression.Name, scope);
                 if (symb is Instance.ConstantReference con)
                 {
@@ -2369,15 +2565,17 @@ namespace SMEIL.Parser.Codegen.VHDL
 
             if (decl.Initializer is AST.NameExpression nameExpr)
             {
-                var process = state.ActiveScopes.OfType<Instance.Process>().Last();
-                var scope = ValidationState.LocalScopes[process];
+                var scope = GetLocalScope(state);
                 var symb = ValidationState.FindSymbol(nameExpr.Name, scope);
                 if (symb is Instance.ConstantReference con)
                 {
-                    // TODO: Return a name expression that maps to the constant
                     return new Tuple<DataType, Expression>(
                         con.ResolvedType,
-                        con.Source.Expression
+                        new AST.Name(
+                            con.Source.SourceToken, 
+                            new Identifier[] { new Identifier(new ParseToken(0, 0, 0, con.Name)) }
+                            , null
+                        ).AsExpression()
                     );
                 }
                 else if (symb is Instance.EnumFieldReference enm)
@@ -2464,6 +2662,34 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
+        /// Returns a composite name based on the elements in the parent list
+        /// </summary>
+        /// <param name="parents">The parents of the item</param>
+        /// <returns>A composite string</returns>
+        private string RenderScopeName(IEnumerable<AST.ParsedItem> parents, string selfname)
+        {
+            return string.Join(".",
+                parents
+                .Select(x => {
+                    if (x is AST.Module m)
+                        return ValidationState.TopLevel.Module == m 
+                            ? null 
+                            : ValidationState.Modules.FirstOrDefault(y => y.Value == m).Key;
+                    else if (x is AST.Network n)
+                        return n.Name.Name;
+                    else if (x is AST.Process p)
+                        return p.Name.Name;
+                    else if (x is AST.FunctionDefinition f)
+                        return f.Name.Name;
+
+                    return null;
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Concat(new [] { selfname })
+            );
+        }
+
+        /// <summary>
         /// Renders a variable declaration
         /// </summary>
         /// <param name="state">The render state</param>
@@ -2489,6 +2715,76 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
+        /// Gets the assigned type table for the current state
+        /// </summary>
+        /// <param name="state">The state to get the type table for</param>
+        /// <returns>The assigned types</returns>
+        private Dictionary<AST.Expression, DataType> GetLocalAssignedTypes(RenderState state)
+        {
+            var cur = state.ActiveScopes.Last(x => x is Instance.Network || x is Instance.Process || x is Instance.FunctionInvocation);
+            if (cur is Instance.Network network)
+                return network.AssignedTypes;
+            else if (cur is Instance.Process process)
+                return process.AssignedTypes;
+            else if (cur is Instance.FunctionInvocation func)
+                return func.AssignedTypes;
+            else
+                throw new InvalidOperationException("Returned something unexpected");
+        }
+
+        /// <summary>
+        /// Gets the local active scope
+        /// </summary>
+        /// <param name="state">The current state</param>
+        /// <returns>The namescope</returns>
+        private Validation.ScopeState GetLocalScope(RenderState state)
+        {
+            var cur = state.ActiveScopes.Last(x => x is Instance.Module || x is Instance.Network || x is Instance.Process || x is Instance.FunctionInvocation || x is Instance.ForLoop);
+            return ValidationState.LocalScopes[cur];
+        }
+
+        /// <summary>
+        /// Gets the local active scope
+        /// </summary>
+        /// <param name="state">The current state</param>
+        /// <returns>The namescope</returns>
+        private NameScopeHelper GetLocalNameScope(RenderState state)
+        {
+            var cur = state.ActiveScopes.Last(x => x is Instance.Network || x is Instance.Process || x is Instance.FunctionInvocation);
+            return NameScopes[cur];
+        }
+
+        /// <summary>
+        /// Extracts the local name for a bus
+        /// </summary>
+        /// <param name="state">The current state</param>
+        /// <param name="bus">The bus to find the name for</param>
+        /// <returns>The local name for the bus</returns>
+        private string GetLocalBusName(RenderState state, Instance.Bus bus)
+        {
+            var cur = state.ActiveScopes.Last(x => x is Instance.Network || x is Instance.Process || x is Instance.FunctionInvocation);
+            if (cur is Instance.Network network)
+            {
+                var parmap = network.MappedParameters.FirstOrDefault(x => x.MappedItem == bus);
+                return parmap == null ? bus.Name : parmap.LocalName;
+            }
+            else if (cur is Instance.Process process)
+            {
+                var parmap = process.MappedParameters.FirstOrDefault(x => x.MappedItem == bus);
+                return parmap == null ? bus.Name : parmap.LocalName;
+            }
+            else if (cur is Instance.FunctionInvocation func)
+            {
+                var parmap = func.MappedParameters.FirstOrDefault(x => x.MappedItem == bus);
+                return parmap == null ? bus.Name : parmap.LocalName;
+            }
+            else
+            {
+                throw new InvalidOperationException("Returned something unexpected");
+            }
+        }
+
+        /// <summary>
         /// Gets or creates a unqiue local name for a signal in a process
         /// </summary>
         /// <param name="state">The current state</param>
@@ -2499,14 +2795,11 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A name that is unique in the process scope</returns>
         private string GetUniqueLocalName(RenderState state, string busname, Instance.Signal signal, bool asRead, string suffix = null)
         {
-            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
-            var namescope = NameScopes[process];
-
+            var namescope = GetLocalNameScope(state);
             if ((asRead ? namescope.SignalReadNames : namescope.SignalWriteNames).TryGetValue(signal, out var name))
                 return name;
 
-            return (asRead ? namescope.SignalReadNames : namescope.SignalWriteNames)[signal] = CreateUniqueLocalName(RenderSignalName(busname, signal.Name, suffix), process);
-
+            return (asRead ? namescope.SignalReadNames : namescope.SignalWriteNames)[signal] = CreateUniqueLocalName(state, RenderSignalName(busname, signal.Name, suffix));
         }
 
         /// <summary>
@@ -2517,13 +2810,52 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A name that is unique in the process scope</returns>
         private string GetUniqueLocalName(RenderState state, Instance.Variable variable)
         {
-            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
-            var namescope = NameScopes[process];
-
-            if (namescope.VariableNames.TryGetValue(variable, out var name))
+            var namescope = GetLocalNameScope(state);
+            if (namescope.LocalNames.TryGetValue(variable, out var name))
                 return name;
             
-            return namescope.VariableNames[variable] = CreateUniqueLocalName(SanitizeVHDLName(variable.Name), process);
+            return namescope.LocalNames[variable] = CreateUniqueLocalName(state, SanitizeVHDLName(variable.Name));
+        }
+
+        /// <summary>
+        /// Gets or creates a unqiue local name for a function in a process
+        /// </summary>
+        /// <param name="state">The current state</param>
+        /// <param name="func">The function to get the local name for</param>
+        /// <returns>A name that is unique in the process scope</returns>
+        private string GetUniqueLocalName(RenderState state, Instance.FunctionInvocation func)
+        {
+            // Observe global (static) functions
+            if (GlobalNames.TryGetValue(func, out var k))
+                return k;
+
+            var namescope = GetLocalNameScope(state);
+            if (namescope.LocalNames.TryGetValue(func, out var name))
+                return name;
+
+            return namescope.LocalNames[func] = CreateUniqueLocalName(state, SanitizeVHDLName(func.Name));
+        }
+
+        /// <summary>
+        /// Creates a unique global name for an item
+        /// </summary>
+        /// <param name="item">The item to register a global name for</param>
+        /// <param name="basename">The suggested name for the item</param>
+        /// <returns>A unique name for the item</returns>
+        private string CreateUniqueGlobalName(object item, string basename)
+        {
+            var name = basename;
+            while (GlobalTokenCounter.TryGetValue(name, out var cnt))
+            {
+                cnt++;                                
+                GlobalTokenCounter[name] = cnt;
+                name += SanitizeVHDLName(name + cnt);
+            }
+
+            GlobalTokenCounter.Add(name, 1);
+            GlobalNames.Add(item, name);
+
+            return name;
         }
 
         /// <summary>
@@ -2532,16 +2864,14 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <param name="name">The name to register</param>
         /// <param name="process">The process scope to use</param>
         /// <returns>The Unique name</returns>
-        private string CreateUniqueLocalName(string name, Instance.Process process)
+        private string CreateUniqueLocalName(RenderState state, string name)
         {
-            var namescope = NameScopes[process];
+            var cur = state.ActiveScopes.Where(x => x is Instance.Network || x is Instance.Process || x is Instance.FunctionInvocation).Last();
+            var namescope = NameScopes[cur];
 
-            // Register some reserved signal names first
-            if (namescope.LocalTokenCounter.Count == 0)
-            {
-                foreach (var n in new string[] { "RDY", "FIN", "ENB", "reentry_guard", Config.CLOCK_SIGNAL_NAME, Config.RESET_SIGNAL_NAME })
-                    namescope.LocalTokenCounter.Add(n, 1);
-            }
+            // Copy over the global items
+            if (GlobalTokenCounter.TryGetValue(name, out var gc) && !namescope.LocalTokenCounter.ContainsKey(name))
+                namescope.LocalTokenCounter.Add(name, gc);
 
             if (namescope.LocalTokenCounter.TryGetValue(name, out var c))
             {
@@ -2567,7 +2897,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         {
             var process = state.ActiveScopes.OfType<Instance.Process>().Last();
             var parmap = process.MappedParameters.FirstOrDefault(x => x.MappedItem == bus);
-            var busname = parmap == null ? bus.Name : parmap.LocalName;
+            var busname = GetLocalBusName(state, bus);
 
             // Normally signals are in or out
             var signals =
@@ -2627,6 +2957,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                     return RenderAssertStatement(state, assertStatement);
                 case AST.BreakStatement breakStatement:
                     return RenderBreakStatement(state, breakStatement);
+                case AST.FunctionStatement functionStatement:
+                    return RenderFunctionStatement(state, functionStatement);
             }
 
             throw new ArgumentException($"Unable to render statement of type: {statement.GetType()}");
@@ -2640,13 +2972,15 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for the statement</returns>
         public string RenderAssignmentStatement(RenderState state, AST.AssignmentStatement assignStatement)
         {
-            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
-            var symboltable = ValidationState.LocalScopes[process];
+            var symboltable = GetLocalScope(state);
             var symbol = ValidationState.FindSymbol(assignStatement.Name, symboltable);
             
             string name;
             if (symbol is Instance.Signal signal)
-                name = GetUniqueLocalName(state, null, signal, false, null);
+            {
+                var busname = GetLocalBusName(state, signal.ParentBus);
+                name = GetUniqueLocalName(state, busname, signal, false, null);
+            }
             else if (symbol is Instance.Variable variable)
                 name = GetUniqueLocalName(state, variable);
             else
@@ -2790,6 +3124,53 @@ namespace SMEIL.Parser.Codegen.VHDL
         public string RenderBreakStatement(RenderState state, AST.BreakStatement breakStatement)
         {
             throw new ArgumentException("Unable to render a break statement");
+        }
+
+        /// <summary>
+        /// Renders a function statement as VHDL
+        /// </summary>
+        /// <param name="state">The state of the render</name>
+        /// <param name="traceStatement">The statement to render</param>
+        /// <returns>A VHDL fragment for the statement</returns>
+        public string RenderFunctionStatement(RenderState state, AST.FunctionStatement functionStatement)
+        {
+            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
+            var scope = GetLocalScope(state);
+            var symbol = process.Instances.OfType<Instance.FunctionInvocation>().FirstOrDefault(x => object.Equals(x.Statement.SourceToken, functionStatement.SourceToken));
+            if (symbol == null)
+                throw new ParserException($"No instance found for function invocation", functionStatement);
+
+            return $"{state.Indent}{GetUniqueLocalName(state, symbol)}({string.Join(", ", symbol.MappedParameters.SelectMany(x => RenderParameterInput(state, x)) )});";
+        }
+
+        /// <summary>
+        /// Renders a parameter list from the source instance
+        /// </summary>
+        /// <param name="state">The state of the render</param>
+        /// <param name="parameter">The parameter to render</param>
+        /// <returns>The parameter as a string</returns>
+        public IEnumerable<string> RenderParameterInput(RenderState state, Instance.MappedParameter parameter)
+        {
+            if (parameter.MappedItem is Instance.Signal signal)
+            {
+                var busname = GetLocalBusName(state, signal.ParentBus);
+                return new string[] { GetUniqueLocalName(state, busname, signal, parameter.MatchedParameter.Direction != ParameterDirection.Out) };
+            }
+            else if (parameter.MappedItem is Instance.Bus bus)
+            {
+                var busname = GetLocalBusName(state, bus);
+                return bus.Instances.OfType<Instance.Signal>().Select(
+                    x => GetUniqueLocalName(state, busname, x, parameter.MatchedParameter.Direction != ParameterDirection.Out)
+                );
+            }
+            else if (parameter.MappedItem is Instance.ConstantReference constRef)
+                return new string[] { GlobalNames[constRef.Source] };
+            else if (parameter.MappedItem is Instance.Literal literal)
+                return new string[] { RenderConstant(state, literal.Source) };
+            else if (parameter.MappedItem is Instance.Variable var)
+                return new string[] { GetUniqueLocalName(state, var) };
+            else
+                throw new ParserException($"Unable to render parameter input for type: {parameter.MappedItem.GetType()}", parameter.SourceParameter);
         }
 
         /// <summary>
@@ -2965,8 +3346,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for the name</returns>
         public string RenderName(RenderState state, AST.Name name)
         {
-            var process = state.ActiveScopes.OfType<Instance.Process>().Last();
-            var symboltable = ValidationState.LocalScopes[process];
+            var symboltable = GetLocalScope(state);
             var symbol = ValidationState.FindSymbol(name, symboltable);
 
             string localname;
@@ -2975,9 +3355,13 @@ namespace SMEIL.Parser.Codegen.VHDL
             else if (symbol is Instance.Variable variable)
                 localname = GetUniqueLocalName(state, variable);
             else if (symbol is Instance.EnumFieldReference enm)
-                localname = EnumNames[enm.ParentType.Source] + "_" + enm.Name;
+                localname = EnumFieldNames[enm.Source];
+            else if (symbol is Instance.Literal lit)
+                localname = SanitizeVHDLName(name.AsString); // RenderConstant(state, lit.Source);
+            else if (symbol is Instance.ConstantReference cref)
+                localname = GlobalNames[cref.Source];
             else
-                throw new ParserException("Unexpected type", name);
+                throw new ParserException($"Unexpected symbol type {symbol?.GetType()}", name);
 
 
             return localname;
@@ -3014,11 +3398,12 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>A VHDL fragment for the expression</returns>
         public string RenderTypeCast(RenderState state, AST.TypeCast typeCast)
         {
-            var proc = state.ActiveScopes.OfType<Instance.Process>().Last();
-            var scope = ValidationState.LocalScopes[proc];
+            // TODO: Extract function also
+            var scope = GetLocalScope(state);
+            var assignedTypes = GetLocalAssignedTypes(state);
 
             var destType = ValidationState.ResolveTypeName(typeCast.TargetName, scope);
-            var sourceType = proc.AssignedTypes[typeCast.Expression];
+            var sourceType = assignedTypes[typeCast.Expression];
 
             if (object.Equals(destType, sourceType))
                 return RenderExpression(state, typeCast.Expression);
@@ -3081,7 +3466,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             else if (type.Type == AST.ILType.Bus)
                 throw new Exception("Cannot declare a bus type");
             else if (type.Type == AST.ILType.Enumeration)
-                return EnumNames[type.EnumType];
+                return GlobalNames[type.EnumType];
 
             throw new Exception($"Unexpected type: {type}");
         }

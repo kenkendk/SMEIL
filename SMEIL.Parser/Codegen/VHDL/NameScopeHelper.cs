@@ -19,7 +19,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <summary>
         /// Map of variable names
         /// </summary>
-        public readonly Dictionary<Instance.Variable, string> VariableNames = new Dictionary<Instance.Variable, string>();
+        public readonly Dictionary<Instance.IInstance, string> LocalNames = new Dictionary<Instance.IInstance, string>();
 
         /// <summary>
         /// Map of used local token names
