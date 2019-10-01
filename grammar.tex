@@ -27,6 +27,11 @@
 
   <qualified-specifier> ::= `as' <ident>
 
+  <import-decl> ::= <type-def>
+  \alt <const-decl>
+  \alt <enum-decl>
+  \alt <func-decl>
+
   <type-def> ::= `type' <ident> `:' \\
     <type-name> (type alias) \\
     | <bus-signal-decls> (bus definition)\\
@@ -53,6 +58,10 @@
   \alt <func-decl>
   \alt <inst-decl>
   \alt <gen-decl>
+
+  <func-decls> ::= <var-decl>
+  \alt <const-decl>
+  \alt <enum-decl>
   
   <params> ::= <param> \{ , <param> \}
 
@@ -74,7 +83,7 @@
 
   <bus-decl> ::= [ `clocked' ] `bus' <ident> <bus-decl-content> `;'
 
-  <func-decl> ::= `function' <ident> `(' <params> `)' `{' \{ <statement> \}  `}' `;'
+  <func-decl> ::= `function' <ident> `(' <params> `)' \{ <func-decls> \} `{' \{ <statement> \}  `}'
 
   <bus-decl-content> ::= `\{' <bus-signal-decls> `\}'
   \alt <type-name>
