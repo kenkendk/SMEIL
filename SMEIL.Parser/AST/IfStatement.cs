@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace SMEIL.Parser.AST
 {
@@ -54,5 +55,20 @@ namespace SMEIL.Parser.AST
         {
             
         }
+
+        /// <summary>
+        /// Clones this statement and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the statement</returns>
+        public override Statement Clone()
+            => new IfStatement(
+                SourceToken,
+                Condition.Clone(),
+                TrueStatements?.Select(x => x.Clone()).ToArray(),
+                ElIfStatements?.Select(x => new Tuple<Expression, Statement[]>(x.Item1.Clone(), x.Item2.Select(y => y.Clone()).ToArray())).ToArray(),
+                FalseStatements?.ToArray()
+            );
+
+
     }
 }

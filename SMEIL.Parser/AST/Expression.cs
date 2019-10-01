@@ -14,5 +14,12 @@ namespace SMEIL.Parser.AST
             : base(token)
         {
         }
+
+        /// <summary>
+        /// Clones this expression and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the expression</returns>
+        public abstract Expression Clone();
+
     }
 }

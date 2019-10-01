@@ -22,5 +22,16 @@ namespace SMEIL.Parser.AST
         {
             this.Name = name ?? throw new ArgumentNullException(nameof(name));
         }
+
+        /// <summary>
+        /// Clones this expression and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the expression</returns>
+        public override Expression Clone()
+            => new NameExpression(
+                SourceToken,
+                Name
+            );
+
     }
 }

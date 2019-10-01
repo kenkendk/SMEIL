@@ -22,5 +22,16 @@ namespace SMEIL.Parser.AST
         {
             Expression = expression ?? throw new ArgumentNullException(nameof(expression));
         }
+
+        /// <summary>
+        /// Clones this expression and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the expression</returns>
+        public override Expression Clone()
+            => new ParenthesizedExpression(
+                SourceToken,
+                Expression.Clone()
+            );
+
     }
 }

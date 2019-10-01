@@ -35,5 +35,18 @@ namespace SMEIL.Parser.AST
             Operation = operation ?? throw new ArgumentNullException(nameof(operation));
             Right = right ?? throw new ArgumentNullException(nameof(right));
         }
+
+        /// <summary>
+        /// Clones this expression and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the expression</returns>
+        public override Expression Clone()
+            => new BinaryExpression(
+                SourceToken,
+                Left.Clone(),
+                Operation,
+                Right.Clone()
+            );
+
     }
 }

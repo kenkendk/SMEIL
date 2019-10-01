@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace SMEIL.Parser.AST
 {   
@@ -43,5 +44,18 @@ namespace SMEIL.Parser.AST
             ToExpression = toExpression ?? throw new ArgumentNullException(nameof(toExpression));
             Statements = statements ?? throw new ArgumentNullException(nameof(statements));
         }
+
+        /// <summary>
+        /// Clones this statement and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the statement</returns>
+        public override Statement Clone() 
+            => new ForStatement(
+                SourceToken,
+                Variable,
+                FromExpression.Clone(),
+                ToExpression.Clone(),
+                Statements.Select(x => x.Clone()).ToArray()       
+            );
     }
 }

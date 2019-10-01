@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace SMEIL.Parser.AST
 {
@@ -28,5 +29,18 @@ namespace SMEIL.Parser.AST
             Format = format ?? throw new ArgumentNullException(nameof(format));
             Expressions = expressions ?? throw new ArgumentNullException(nameof(expressions));
         }
+
+        /// <summary>
+        /// Clones this statement and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the statement</returns>
+        public override Statement Clone()
+            => new TraceStatement(
+                SourceToken,
+                Format,
+                Expressions.Select(x => x.Clone()).ToArray()
+            );
+
+
     }
 }

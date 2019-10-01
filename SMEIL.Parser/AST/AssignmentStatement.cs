@@ -13,7 +13,7 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// The value being assigned
         /// </summary>
-        public readonly Expression Value;
+        public Expression Value;
 
         /// <summary>
         /// Constructs a new assignment statement
@@ -27,5 +27,16 @@ namespace SMEIL.Parser.AST
             Name = name ?? throw new ArgumentNullException(nameof(name));
             Value = value ?? throw new ArgumentNullException(nameof(value));
         }
+
+        /// <summary>
+        /// Clones this statement and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the statement</returns>
+        public override Statement Clone()
+            => new AssignmentStatement(
+                SourceToken,
+                Name,
+                Value.Clone()
+            );
     }
 }

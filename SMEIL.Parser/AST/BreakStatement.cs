@@ -15,5 +15,15 @@ namespace SMEIL.Parser.AST
             : base(token)
         {
         }
+
+        /// <summary>
+        /// Clones this statement and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the statement</returns>
+        public override Statement Clone()
+            => new BreakStatement(
+                SourceToken
+            );
+
     }
 }
