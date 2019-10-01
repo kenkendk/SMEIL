@@ -41,6 +41,12 @@ namespace SMEIL.Parser.Validation
         public Instance.Network NetworkInstance { get; internal set; }
 
         /// <summary>
+        /// The top level module instance
+        /// </summary>
+        /// <value></value>
+        public Instance.Module ModuleInstance { get; internal set; }
+
+        /// <summary>
         /// The commandline arguments provided to the top-level network
         /// </summary>
         public string[] CommandlineArguments { get; internal set; }
@@ -99,7 +105,7 @@ namespace SMEIL.Parser.Validation
         /// <summary>
         /// The list of loaded modules, where the key is the path
         /// </summary>
-        public readonly Dictionary<string, AST.Module> Modules = new Dictionary<string, Module>();
+        public readonly Dictionary<string, AST.Module> Modules = new Dictionary<string, AST.Module>();
 
         /// <summary>
         /// The table of current symbols
@@ -114,7 +120,7 @@ namespace SMEIL.Parser.Validation
         /// <summary>
         /// Map of signals and their usage
         /// </summary>
-        public readonly Dictionary<Instance.Process, Dictionary<object, ItemUsageDirection>> ItemDirection = new Dictionary<Instance.Process, Dictionary<object, ItemUsageDirection>>();
+        public readonly Dictionary<Instance.IInstance, Dictionary<object, ItemUsageDirection>> ItemDirection = new Dictionary<Instance.IInstance, Dictionary<object, ItemUsageDirection>>();
 
         /// <summary>
         /// The top-level entry details
@@ -145,11 +151,113 @@ namespace SMEIL.Parser.Validation
         /// Returns all instances discovered by starting at the top level
         /// </summary>
         public IEnumerable<Instance.IInstance> AllInstances
+            => AllInstancesWithParents.Select(x => x.Self);
+        // {
+        //     get
+        //     {
+        //         var work = new Queue<Instance.IInstance>();
+        //         work.Enqueue(TopLevel.ModuleInstance);
+
+        //         while (work.Count != 0)
+        //         {
+        //             var item = work.Dequeue();
+        //             yield return item;
+
+        //             // Add newly discovered instances
+        //             if (item is Instance.Module m)
+        //                 foreach (var n in m.Instances)
+        //                     work.Enqueue(n);
+        //             else if (item is Instance.Network nw)
+        //                 foreach (var n in nw.Instances)
+        //                     work.Enqueue(n);
+        //             else if (item is Instance.Process pr)
+        //                 foreach (var n in pr.Instances)
+        //                     work.Enqueue(n);
+        //             else if (item is Instance.Bus bs)
+        //                 foreach (var n in bs.Instances)
+        //                     work.Enqueue(n);
+        //             else if (item is Instance.FunctionInvocation func)
+        //                 foreach (var n in func.Instances)
+        //                     work.Enqueue(n);
+        //         }
+        //     }
+        // }
+
+        /// <summary>
+        /// Helper class to keep both the instance and the parent link
+        /// </summary>
+        public class ParentVisitor
+        {
+            /// <summary>
+            /// The item this entry represents
+            /// </summary>
+            public readonly Instance.IInstance Self;
+            /// <summary>
+            /// The parent of this instance, or null if there are no parents
+            /// </summary>
+            public readonly ParentVisitor Parent;
+
+            /// <summary>
+            /// Creates a new <see ref="ParentVisitor" />
+            /// </summary>
+            /// <param name="parent">The parent item</param>
+            /// <param name="self">The item</param>
+            public ParentVisitor(ParentVisitor parent, Instance.IInstance self)
+            {
+                Parent = parent;
+                Self = self ?? throw new ArgumentNullException(nameof(self));
+            }
+
+            /// <summary>
+            /// Returns the list of parents from this instance, 
+            /// starting with the closest parent
+            /// </summary>
+            /// <value>The list of parents</value>
+            public IEnumerable<Instance.IInstance> Parents
+            {
+                get 
+                {
+                    var n = this;
+                    while(n != null)
+                    {
+                        yield return n.Self;
+                        n = n.Parent;
+                    }
+                }
+            }
+
+            /// <summary>
+            /// Finds the most immediate module, and returns the list of 
+            /// parents up to the nearest module, starting with the item itself
+            /// and ending with the module
+            /// </summary>
+            /// <value>The list of parents</value>
+            public IEnumerable<Instance.IInstance> ModuleToInstance
+            {
+                get
+                {
+                    // Basically TakeWhile, but returning the match itself as well
+                    foreach (var item in Parents)
+                    {
+                        yield return item;
+                        if (item is Instance.Module)
+                            break;
+                    }
+                }
+            }
+                
+        }
+
+        /// <summary>
+        /// Returns all instances discovered by starting at the top level,
+        /// with the immediate parent attached to each
+        /// </summary>
+        public IEnumerable<ParentVisitor> AllInstancesWithParents
         {
             get
             {
-                var work = new Queue<Instance.IInstance>();
-                work.Enqueue(TopLevel.NetworkInstance);
+                var work = new Queue<ParentVisitor>();
+                work.Enqueue(new ParentVisitor(null, TopLevel.ModuleInstance));
 
                 while (work.Count != 0)
                 {
@@ -157,18 +265,24 @@ namespace SMEIL.Parser.Validation
                     yield return item;
 
                     // Add newly discovered instances
-                    if (item is Instance.Network nw)
+                    if (item.Self is Instance.Module m)
+                        foreach (var n in m.Instances)
+                            work.Enqueue(new ParentVisitor(item, n));
+                    else if (item.Self is Instance.Network nw)
                         foreach (var n in nw.Instances)
-                            work.Enqueue(n);
-                    if (item is Instance.Process pr)
+                            work.Enqueue(new ParentVisitor(item, n));
+                    else if (item.Self is Instance.Process pr)
                         foreach (var n in pr.Instances)
-                            work.Enqueue(n);
-                    if (item is Instance.Bus bs)
+                            work.Enqueue(new ParentVisitor(item, n));
+                    else if (item.Self is Instance.Bus bs)
                         foreach (var n in bs.Instances)
-                            work.Enqueue(n);
+                            work.Enqueue(new ParentVisitor(item, n));
+                    else if (item.Self is Instance.FunctionInvocation func)
+                        foreach (var n in func.Instances)
+                            work.Enqueue(new ParentVisitor(item, n));
                 }
             }
-        }
+        }        
 
         /// <summary>
         /// Registers an item for usage in a particular direction
@@ -177,7 +291,7 @@ namespace SMEIL.Parser.Validation
         /// <param name="item">The item to register</param>
         /// <param name="direction">The direction to register</param>
         /// <param name="sourceExpr">The source expression used for error messages</param>
-        public void RegisterItemUsageDirection(Instance.Process scope, object item, ItemUsageDirection direction, AST.ParsedItem sourceExpr)
+        public void RegisterItemUsageDirection(Instance.IParameterizedInstance scope, object item, ItemUsageDirection direction, AST.ParsedItem sourceExpr)
         {
             if (scope == null)
                 throw new ArgumentNullException(nameof(scope));
@@ -196,7 +310,7 @@ namespace SMEIL.Parser.Validation
                         Enumerable.Range(0, scope.MappedParameters.Count),
                         (x, i) => new
                         {
-                            Direction = scope.ProcessDefinition.Parameters[i].Direction,
+                            Direction = scope.SourceParameters[i].Direction,
                             Bus = x.MappedItem
                         }
                     )
@@ -275,6 +389,9 @@ namespace SMEIL.Parser.Validation
                 var symbol = FindSymbol(name.Name, scope);
                 if (symbol is Instance.IInstance || symbol == null)
                     return (Instance.IInstance)symbol;
+                // We no longer quick-patch for constant declarations, but require that they are all inserted as instances
+                // if (symbol is AST.ConstantDeclaration cdecl)
+                //     return new Instance.ConstantReference(cdecl);
 
                 throw new ParserException($"Got element of type {symbol.GetType().Name} but expected an instance", expression);
             }
@@ -533,7 +650,7 @@ namespace SMEIL.Parser.Validation
                 foreach (var e in enumDecl.Fields)
                     subscope.SymbolTable.Add(e.Name.Name, e);
             }
-            else if (decl is FunctionDeclaration func)
+            else if (decl is FunctionDefinition func)
             {
                 scope.SymbolTable.Add(func.Name.Name, decl);
             }
@@ -564,11 +681,11 @@ namespace SMEIL.Parser.Validation
             }
             else if (decl is VariableDeclaration variable)
             {
-                scope.SymbolTable.Add(variable.Name.Name, decl);
+                // Ignored until we can create an instance
             }
             else if (decl is ConstantDeclaration constant)
             {
-                scope.SymbolTable.Add(constant.Name.Name, decl);
+                // Ignored until we can create an instance
             }
             else if (decl is InstanceDeclaration inst)
             {
@@ -591,7 +708,7 @@ namespace SMEIL.Parser.Validation
         /// <param name="scope">The scope to use</param>
         public void RegisterSymbols(AST.Module module, ScopeState scope)
         {
-            foreach (var tdef in module.TypeDefinitions)
+            foreach (var tdef in module.Declarations.OfType<TypeDefinition>())
                 scope.TypedefinitionTable.Add(tdef.Name.Name, tdef);
 
             foreach (var ent in module.Entities)

@@ -7,7 +7,7 @@ namespace SMEIL.Parser.AST
     /// Represents a constant declaration
     /// </summary>
     [DebuggerDisplay("ConstantDeclaration {Name} = {Expression}")]
-    public class ConstantDeclaration : NetworkDeclaration
+    public class ConstantDeclaration : NetworkDeclaration, IFunctionDeclaration
     {
         /// <summary>
         /// The constant identifier

@@ -52,6 +52,7 @@ namespace SMEIL.Parser
             var rootscope = state.CurrentScope;
             var toResolve = new Stack<AST.Module>();
             state.TopLevel.Module = LoadModule(file);
+            state.TopLevel.ModuleInstance = new Instance.Module(state.TopLevel.Module);
 
             // Find the entry network
             var networks = state.TopLevel.Module.Entities.OfType<AST.Network>().ToList();
@@ -80,6 +81,7 @@ namespace SMEIL.Parser
             state.TopLevel.CommandlineArguments = arguments = arguments ?? new string[0];
             state.Modules[file] = state.TopLevel.Module;
             state.LocalScopes[state.TopLevel.Module] = rootscope;
+
 
             // Recursively load and resolve imports
             LoadImports(file, state, state.TopLevel.Module);

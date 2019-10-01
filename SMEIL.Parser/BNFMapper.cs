@@ -188,6 +188,27 @@ namespace SMEIL.Parser
                         entries.Select(y => y.Index).ToArray()
                     );
                 }
+            );
+
+            // Mapping expressions to parameters
+            var parammap = Mapper(
+                Composite(
+                    Optional(
+                        Composite(
+                            ident,
+                            ":"
+                        )
+                    ),
+                    expression
+                ),
+
+                x => new AST.ParameterMap(
+                    x.Item,
+                    x.FindSubMatch(0, 0, 0) == null || !x.FindSubMatch(0, 0, 0).Matched
+                        ? null
+                        : x.FirstMapper(ident),
+                    x.FirstMapper(expression)
+                )
             );            
 
             var unaryExpresssion = Mapper(
@@ -471,6 +492,32 @@ namespace SMEIL.Parser
                 }
             );
 
+            var functionStatement = Mapper(
+                Composite(
+                    ident,
+                    "(",
+                    Optional(
+                        Composite(
+                            parammap,
+                            Sequence(
+                                Composite(
+                                    ",",
+                                    parammap
+                                )
+                            )
+                        )
+                    ),
+                    ")",
+                    ";"
+                ),
+
+                x => new AST.FunctionStatement(
+                    x.Item,
+                    x.FirstMapper(ident),
+                    x.InvokeMappers(parammap).ToArray()
+                )
+            );
+
             var traceStatement = Mapper(
                 Composite(
                     "trace",
@@ -522,7 +569,8 @@ namespace SMEIL.Parser
                 switchStatement,
                 traceStatement,
                 assertStatement,
-                breakStatement
+                breakStatement,
+                functionStatement
             );
 
 
@@ -637,7 +685,6 @@ namespace SMEIL.Parser
                 x => x.InvokeMappers(parameter).ToArray()
             );
 
-
             var enumFieldDeclaration = Mapper(
                 Composite(
                     ident,
@@ -676,25 +723,55 @@ namespace SMEIL.Parser
                 )
             );
 
-            var funcDecl = Mapper(
+            var constDecl = Mapper(
+                Composite(
+                    "const",
+                    ident,
+                    ":",
+                    typename,
+                    "=",
+                    expression,
+                    ";"
+                ),
+
+                x => new AST.ConstantDeclaration(
+                    x.Item,
+                    x.FirstMapper(ident),
+                    x.FirstMapper(typename),
+                    x.FirstMapper(expression)
+                )
+            );            
+
+            var funcDecls = Mapper(
+                Choice(
+                    varDecl,
+                    constDecl,
+                    enumDecl
+                ),
+
+                x => x.InvokeDerivedMappers<AST.Declaration>().First()
+            );
+
+            var funcDef = Mapper(
                 Composite(
                     "function",
                     ident,
                     "(",
                     parameters,
                     ")",
+                    Sequence(funcDecls),
                     "{",
                     statement,
                     Sequence(statement),                    
-                    "}",
-                    ";"
+                    "}"
                 ),
 
-                x => new AST.FunctionDeclaration(
+                x => new AST.FunctionDefinition(
                     x.Item,
                     x.FirstMapper(ident),
                     x.FirstMapper(parameters),
-                    x.InvokeFirstLevelMappers(statement).ToArray()
+                    x.InvokeMappers(funcDecls).ToArray(),
+                    x.InvokeMappers(statement).ToArray()
                 )
             );
 
@@ -823,25 +900,6 @@ namespace SMEIL.Parser
                         : new AST.TypeDefinition(x.Item, x.FirstMapper(ident), x.InvokeMappers(busSignalDeclaration))
             );
 
-            var parammap = Mapper(
-                Composite(
-                    Optional(
-                        Composite(
-                            ident,
-                            ":"
-                        )
-                    ),
-                    expression
-                ),
-
-                x => new AST.ParameterMap(
-                    x.Item,
-                    x.FindSubMatch(0, 0, 0) == null || !x.FindSubMatch(0, 0, 0).Matched
-                        ? null
-                        : x.FirstMapper(ident),
-                    x.FirstMapper(expression)
-                )
-            );
             var instanceName = Mapper(
                 Choice(
                     Composite(ident, "[", expression, "]"),
@@ -878,25 +936,6 @@ namespace SMEIL.Parser
                     x.FirstMapper(instanceName),
                     x.InvokeMappers(ident).Skip(1).First(),
                     x.InvokeMappers(parammap).ToArray()
-                )
-            );
-
-            var constDecl = Mapper(
-                Composite(
-                    "const",
-                    ident,
-                    ":",
-                    typename,
-                    "=",
-                    expression,
-                    ";"
-                ),
-
-                x => new AST.ConstantDeclaration(
-                    x.Item, 
-                    x.FirstMapper(ident),
-                    x.FirstMapper(typename),
-                    x.FirstMapper(expression)
                 )
             );
 
@@ -959,7 +998,7 @@ namespace SMEIL.Parser
                     constDecl,
                     busDecl,
                     enumDecl,
-                    funcDecl,
+                    funcDef,
                     instDecl,
                     genDecl
                 ),
@@ -1030,13 +1069,24 @@ namespace SMEIL.Parser
                 x => x.FirstDerivedMapper<AST.Entity>()
             );
 
+            var moduleDecl = Mapper(
+                Choice(
+                    typedefs,
+                    constDecl,
+                    enumDecl,
+                    funcDef
+                ),
+
+                x => x.FirstDerivedMapper<AST.Declaration>()
+            );
+
             var module = Mapper(
                 Composite(
                     Sequence(
                         importstatement
                     ),
                     Sequence(
-                        typedefs
+                        moduleDecl
                     ),
                     entity,
                     Sequence(entity)
@@ -1045,7 +1095,7 @@ namespace SMEIL.Parser
                 x => new AST.Module(
                     x.Item,
                     x.InvokeMappers(importstatement).ToArray(),
-                    x.InvokeMappers(typedefs).ToArray(),
+                    x.InvokeMappers(moduleDecl).ToArray(),
                     x.InvokeMappers(entity).ToArray()
                 )
             );

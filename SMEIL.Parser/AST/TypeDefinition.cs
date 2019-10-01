@@ -7,7 +7,7 @@ namespace SMEIL.Parser.AST
     /// <summary>
     /// Represents a type definition
     /// </summary>
-    public class TypeDefinition : ParsedItem
+    public class TypeDefinition : Declaration
     {
         /// <summary>
         /// The name of the type alias

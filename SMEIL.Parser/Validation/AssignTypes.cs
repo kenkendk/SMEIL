@@ -19,9 +19,19 @@ namespace SMEIL.Parser.Validation
             // Traverse the state, starting with networks
             foreach (var networkInstance in state.AllInstances.OfType<Instance.Network>())
             {
+                // Handle top-level functions
+                foreach (var f in networkInstance.Instances.OfType<Instance.FunctionInvocation>())
+                    AssignProcessTypes(state, f, f.Statements, f.AssignedTypes);
+
                 // Assign all types in all instantiated processes
                 foreach (var instance in networkInstance.Instances.OfType<Instance.Process>())
-                    AssignProcessTypes(state, instance);                
+                {
+                    AssignProcessTypes(state, instance, instance.Statements, instance.AssignedTypes); 
+
+                    // Handle process-defined functions
+                    foreach (var f in instance.Instances.OfType<Instance.FunctionInvocation>())
+                        AssignProcessTypes(state, f, f.Statements, f.AssignedTypes);
+                }
             }
         }
 
@@ -30,27 +40,27 @@ namespace SMEIL.Parser.Validation
         /// </summary>
         /// <param name="state">The validation state to use</param>
         /// <param name="instance">The process instance to use</param>
-        private static void AssignProcessTypes(ValidationState state, Instance.Process instance)
+        private static void AssignProcessTypes(ValidationState state, Instance.IParameterizedInstance parent, AST.Statement[] statements, Dictionary<Expression, DataType> assignedTypes)
         {
             // Get the scope for the intance
-            var scope = state.LocalScopes[instance];
+            var scope = state.LocalScopes[parent];
 
             // We use multiple iterations to assign types
             // The first iteration assigns types to all literal, bus, signal and variable expressions
-            foreach (var item in instance.ProcessDefinition.All().OfType<AST.Expression>())
+            foreach (var item in statements.All().OfType<AST.Expression>())
             {
                 // Skip duplicate assignments
-                if (instance.AssignedTypes.ContainsKey(item.Current))
+                if (assignedTypes.ContainsKey(item.Current))
                     continue;
 
                 if (item.Current is AST.LiteralExpression literal)
                 {
                     if (literal.Value is AST.BooleanConstant)
-                        instance.AssignedTypes[literal] = new AST.DataType(literal.SourceToken, ILType.Bool, 1);
+                        assignedTypes[literal] = new AST.DataType(literal.SourceToken, ILType.Bool, 1);
                     else if (literal.Value is AST.IntegerConstant)
-                        instance.AssignedTypes[literal] = new AST.DataType(literal.SourceToken, ILType.SignedInteger, -1);
+                        assignedTypes[literal] = new AST.DataType(literal.SourceToken, ILType.SignedInteger, -1);
                     else if (literal.Value is AST.FloatingConstant)
-                        instance.AssignedTypes[literal] = new AST.DataType(literal.SourceToken, ILType.Float, -1);
+                        assignedTypes[literal] = new AST.DataType(literal.SourceToken, ILType.Float, -1);
                 }
                 else if (item.Current is AST.NameExpression name)
                 {
@@ -58,14 +68,14 @@ namespace SMEIL.Parser.Validation
                     var dt = FindDataType(state, name, scope);
                     if (dt != null)
                     {
-                        instance.AssignedTypes[name] = dt;
-                        state.RegisterItemUsageDirection(instance, symbol, ItemUsageDirection.Read, item.Current);
+                        assignedTypes[name] = dt;
+                        state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Read, item.Current);
                     }
                 }
             }
 
             // Handle variables not used in normal expressions
-            foreach (var item in instance.ProcessDefinition.All().OfType<AST.Statement>())            
+            foreach (var item in statements.All())            
             {
                 if (item.Current is AST.AssignmentStatement assignmentStatement)
                 {
@@ -102,15 +112,15 @@ namespace SMEIL.Parser.Validation
 
             // We are only concerned with expressions, working from leafs and up
             // At this point all literals, variables, signals, etc. should have a resolved type
-            foreach (var item in instance.ProcessDefinition.All(AST.TraverseOrder.DepthFirstPostOrder).OfType<AST.Expression>())
+            foreach (var item in statements.All(AST.TraverseOrder.DepthFirstPostOrder).OfType<AST.Expression>())
             {
                 // Skip duplicate assignments
-                if (instance.AssignedTypes.ContainsKey(item.Current))
+                if (assignedTypes.ContainsKey(item.Current))
                     continue;
 
                 if (item.Current is AST.UnaryExpression unaryExpression)
                 {
-                    var sourceType = instance.AssignedTypes[unaryExpression.Expression];
+                    var sourceType = assignedTypes[unaryExpression.Expression];
 
                     switch (unaryExpression.Operation.Operation)
                     {
@@ -135,12 +145,12 @@ namespace SMEIL.Parser.Validation
                     }
 
                     // Unary operations do not change the type
-                    instance.AssignedTypes[item.Current] = sourceType;
+                    assignedTypes[item.Current] = sourceType;
                 }
                 else if (item.Current is AST.BinaryExpression binaryExpression)
                 {
-                    var leftType = instance.AssignedTypes[binaryExpression.Left];
-                    var rightType = instance.AssignedTypes[binaryExpression.Right];
+                    var leftType = assignedTypes[binaryExpression.Left];
+                    var rightType = assignedTypes[binaryExpression.Right];
 
                     // If we have a numerical operation, verify that the operands are numeric
                     if (binaryExpression.Operation.IsNumericOperation)
@@ -174,7 +184,7 @@ namespace SMEIL.Parser.Validation
                             throw new ParserException($"The value being shifted must be an integer type but has type {leftType}", binaryExpression.Left);
                         if (!rightType.IsInteger)
                             throw new ParserException($"The shift operand must be an integer type but has type {rightType}", binaryExpression.Right);
-                        instance.AssignedTypes[binaryExpression] = leftType;                        
+                        assignedTypes[binaryExpression] = leftType;                        
                     }
                     else
                     {
@@ -187,9 +197,9 @@ namespace SMEIL.Parser.Validation
 
                         // If the source operands do not have the unified types, inject an implicit type-cast
                         if (!object.Equals(leftType, unified))
-                            instance.AssignedTypes[binaryExpression.Left = new AST.TypeCast(binaryExpression.Left, unified, false)] = unified;
+                            assignedTypes[binaryExpression.Left = new AST.TypeCast(binaryExpression.Left, unified, false)] = unified;
                         if (!object.Equals(rightType, unified))
-                            instance.AssignedTypes[binaryExpression.Right = new AST.TypeCast(binaryExpression.Right, unified, false)] = unified;
+                            assignedTypes[binaryExpression.Right = new AST.TypeCast(binaryExpression.Right, unified, false)] = unified;
 
                         // Assign the type to this operation
                         switch (binaryExpression.Operation.Operation)
@@ -202,7 +212,7 @@ namespace SMEIL.Parser.Validation
                             case BinOp.BitwiseAnd:
                             case BinOp.BitwiseOr:
                             case BinOp.BitwiseXor:
-                                instance.AssignedTypes[binaryExpression] = unified;
+                                assignedTypes[binaryExpression] = unified;
                                 break;
 
                             // These operations return a boolean result
@@ -214,7 +224,7 @@ namespace SMEIL.Parser.Validation
                             case BinOp.GreaterThanOrEqual:
                             case BinOp.LogicalAnd:
                             case BinOp.LogicalOr:
-                                instance.AssignedTypes[binaryExpression] = new AST.DataType(binaryExpression.SourceToken, ILType.Bool, 1);
+                                assignedTypes[binaryExpression] = new AST.DataType(binaryExpression.SourceToken, ILType.Bool, 1);
                                 break;
 
                             default:
@@ -228,29 +238,29 @@ namespace SMEIL.Parser.Validation
                     if (!typecastExpression.Explicit)
                         continue;
 
-                    var sourceType = instance.AssignedTypes[typecastExpression.Expression];
+                    var sourceType = assignedTypes[typecastExpression.Expression];
                     var targetType = state.ResolveTypeName(typecastExpression.TargetName, scope);
 
                     if (!state.CanTypeCast(sourceType, targetType, scope))
                         throw new ParserException($"Cannot cast from {sourceType} to {typecastExpression.TargetName}", typecastExpression);
 
-                    instance.AssignedTypes[typecastExpression] = targetType;
+                    assignedTypes[typecastExpression] = targetType;
                 }
                 // Carry parenthesis expression types
                 else if (item.Current is AST.ParenthesizedExpression parenthesizedExpression)
                 {
-                    instance.AssignedTypes[item.Current] = instance.AssignedTypes[parenthesizedExpression.Expression];
+                    assignedTypes[item.Current] = assignedTypes[parenthesizedExpression.Expression];
                 }
 
             }
 
             // Then make sure we have assigned all targets
-            foreach (var item in instance.ProcessDefinition.All().OfType<AST.Statement>())
+            foreach (var item in statements.All().OfType<AST.Statement>())
             {
                 if (item.Current is AST.AssignmentStatement assignmentStatement)
                 {
                     var symbol = state.FindSymbol(assignmentStatement.Name, scope);
-                    var exprType = instance.AssignedTypes[assignmentStatement.Value];
+                    var exprType = assignedTypes[assignmentStatement.Value];
                     DataType targetType;
 
                     if (symbol is Instance.Variable variableInstance)
@@ -262,11 +272,13 @@ namespace SMEIL.Parser.Validation
 
                     if (!state.CanUnifyTypes(targetType, exprType, scope))
                         throw new ParserException($"Cannot assign \"{assignmentStatement.Value}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item.Current);
-                    var unified = state.UnifiedType(targetType, exprType, scope);
-                    if (!object.Equals(unified, targetType))
-                        throw new ParserException($"Cannot assign \"{assignmentStatement.Value}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item.Current);
+                    //var unified = state.UnifiedType(targetType, exprType, scope);
 
-                    state.RegisterItemUsageDirection(instance, symbol, ItemUsageDirection.Write, item.Current);
+                    // Force the right-hand side to be the type we are assigning to
+                    if (!object.Equals(exprType, targetType))
+                        assignedTypes[assignmentStatement.Value = new AST.TypeCast(assignmentStatement.Value, targetType, false)] = targetType;
+
+                    state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Write, item.Current);
                 }
             }
         }

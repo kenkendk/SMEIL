@@ -1,7 +1,7 @@
 ﻿using System;
 namespace SMEIL.Parser.AST
 {
-    public class EnumDeclaration : Declaration
+    public class EnumDeclaration : Declaration, IFunctionDeclaration
     {
         /// <summary>
         /// The name of the enum

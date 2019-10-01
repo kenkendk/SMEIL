@@ -70,7 +70,7 @@ namespace SMEIL.Parser.Instance
         /// <summary>
         /// The source instantiation element
         /// </summary>
-        public AST.InstanceDeclaration DeclarationSource => Source;
+        public AST.ParameterMap[] ParameterMap => Source.Parameters;
 
         /// <summary>
         /// The types assigned to each expression in this instance
@@ -83,6 +83,11 @@ namespace SMEIL.Parser.Instance
         public readonly List<IInstance> Instances = new List<IInstance>();
 
         /// <summary>
+        /// A copy of the statements inside the process
+        /// </summary>
+        public AST.Statement[] Statements;
+
+        /// <summary>
         /// Constructs a new instance of the bus
         /// </summary>
         /// <param name="source">The process declaration</param>
@@ -93,6 +98,7 @@ namespace SMEIL.Parser.Instance
             Source = source ?? throw new ArgumentNullException(nameof(source));
             ProcessDefinition = process ?? throw new ArgumentNullException(nameof(process));
             Type = type;
+            Statements = ProcessDefinition.Statements.Select(x => x.Clone()).ToArray();
         }
     }
 }

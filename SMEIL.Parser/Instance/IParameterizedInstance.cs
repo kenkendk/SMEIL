@@ -36,7 +36,7 @@ namespace SMEIL.Parser.Instance
         /// <summary>
         /// The source parameters
         /// </summary>
-        AST.InstanceDeclaration DeclarationSource { get; }
+        AST.ParameterMap[] ParameterMap { get; }
 
     }
 }

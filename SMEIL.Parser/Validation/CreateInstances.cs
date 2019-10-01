@@ -16,8 +16,60 @@ namespace SMEIL.Parser.Validation
         /// <param name="state">The validation state</param>
         public void Validate(ValidationState state)
         {
-            // Start the process with the network
-            state.TopLevel.NetworkInstance = CreateAndRegisterInstance(state, state.TopLevel.NetworkDeclaration, state.TopLevel.SourceNetwork);
+            // Start the process with the top-level module
+            state.TopLevel.ModuleInstance = CreateAndRegisterInstance(state, state.TopLevel.Module);
+        }
+
+        /// <summary>
+        /// Creates all sub-instances for a module
+        /// </summary>
+        /// <param name="state">The state to use</param>
+        /// <param name="module">The parent module</param>
+        /// <returns></returns>
+        private Instance.Module CreateAndRegisterInstance(ValidationState state, AST.Module module)
+        {
+            var modinstance = new Instance.Module(module);
+            var parentCollection = modinstance.Instances;
+
+            using (var scope = state.StartScope(module, modinstance))
+            {
+                // TODO: Create module instances here
+                foreach (var imp in module.Imports)
+                {
+                }
+
+                foreach (var decl in module.Declarations)
+                {
+                    if (decl is AST.ConstantDeclaration cdecl)
+                    {
+                        var cref = new Instance.ConstantReference(cdecl);
+                        scope.SymbolTable.Add(cref.Name, cref);
+                        parentCollection.Add(cref);
+                    }
+                    else if (decl is AST.EnumDeclaration edecl)
+                    {
+                        var e = new Instance.EnumTypeReference(edecl);
+                        scope.SymbolTable.Add(e.Name, e);
+                        using (state.StartScope(e))
+                            CreateAndRegisterInstance(state, e);
+                        parentCollection.Add(e);
+                    }
+                    else if (decl is AST.FunctionDefinition fdecl)
+                    {
+                        scope.SymbolTable.Add(fdecl.Name.Name, fdecl);
+                    }
+                }
+
+                // The entry-level network is not user-instantiated
+                if (module == state.TopLevel.Module)
+                    modinstance.Instances.Add(
+                        state.TopLevel.NetworkInstance = 
+                            CreateAndRegisterInstance(state, state.TopLevel.NetworkDeclaration, state.TopLevel.SourceNetwork)
+                    );
+
+            }
+
+            return modinstance;
         }
 
         /// <summary>
@@ -58,8 +110,13 @@ namespace SMEIL.Parser.Validation
                         CreateAndRegisterInstance(state, b);
                     parentCollection.Add(b);
                 }
-                else if (decl is AST.ConstantDeclaration)
-                    continue; // We just refer to the constant, no need for an instance
+                else if (decl is AST.ConstantDeclaration cdecl)
+                {
+                    var cref = new Instance.ConstantReference(cdecl);
+                    scope.SymbolTable.Add(cref.Name, cref);
+                    parentCollection.Add(cref);
+                    continue; 
+                }
                 else if (decl is AST.GeneratorDeclaration genDecl)
                 {
                     var startSymbol = state.ResolveToInteger(genDecl.SourceExpression, scope);
@@ -120,42 +177,10 @@ namespace SMEIL.Parser.Validation
         {
             var scope = state.CurrentScope;
 
-            // Then add all variables and locally defined busses
-            foreach (var decl in parent.ProcessDefinition.Declarations)
-            {
-                if (decl is EnumDeclaration en)
-                {
-                    var e = new Instance.EnumTypeReference(en);
-                    scope.SymbolTable.Add(e.Name, e);
-                    using (state.StartScope(e))
-                        CreateAndRegisterInstance(state, e);
-                    parent.Instances.Add(e);
-
-                }
-                else if (decl is FunctionDeclaration)
-                    continue; // No instance needed
-                else if (decl is ConstantDeclaration)
-                    continue; // No instance needed
-                else if (decl is VariableDeclaration variable)
-                {
-                    var v = new Instance.Variable(variable);
-                    scope.SymbolTable.Add(v.Name, v);
-                    parent.Instances.Add(v);
-                }
-                else if (decl is BusDeclaration bus)
-                {
-                    var b = new Instance.Bus(bus);
-                    scope.SymbolTable.Add(b.Name, b);
-                    using(state.StartScope(b))
-                        CreateAndRegisterInstance(state, b);
-                    parent.Instances.Add(b);
-                }
-                else
-                    throw new ParserException($"Unable to process {decl.GetType()} inside a process", decl);
-            }
+            CreateAndRegisterInstancesForDeclarations(state, parent.ProcessDefinition.Declarations, parent.Instances);
 
             // TODO: The scope should work within the statement tree. We can have nested statements....
-            foreach (var loop in parent.ProcessDefinition.Statements.All().OfType<AST.ForStatement>())
+            foreach (var loop in parent.Statements.All().OfType<AST.ForStatement>())
             {
                 var l = new Instance.ForLoop(loop.Current);
                 using (var sc = state.StartScope(l)) {
@@ -163,6 +188,73 @@ namespace SMEIL.Parser.Validation
                     sc.SymbolTable.Add(loop.Current.Variable.Name, l);
                 }
                 parent.Instances.Add(l);
+            }
+
+            // Find all function invocations so we can map parameters
+            foreach (var func in parent.Statements.All().OfType<AST.FunctionStatement>())
+            {
+                var fdef = state.FindSymbol(func.Current.Name, scope);
+                if (fdef == null)
+                    throw new ParserException($"No function named {func.Current.Name.Name} found", func.Current);
+                if (!(fdef is AST.FunctionDefinition ffdef))
+                    throw new ParserException($"Expected a function for {func.Current.Name.Name}, but found {fdef.GetType()}", func.Current);
+
+                var f = new Instance.FunctionInvocation(ffdef, func.Current);
+                using (var sc = state.StartScope(f))
+                    CreateAndRegisterInstancesForDeclarations(state, ffdef.Declarations, f.Instances);
+
+                parent.Instances.Add(f);
+            }
+        }
+
+        /// <summary>
+        /// Creates all sub-instances from declarations
+        /// </summary>
+        /// <param name="state">The state to use</param>
+        /// <param name="declarations">The declarations to process</param>
+        /// <param name="parentInstances">The collection of instances to append to</param>
+        private void CreateAndRegisterInstancesForDeclarations(Validation.ValidationState state, IEnumerable<AST.Declaration> declarations, List<Instance.IInstance> parentInstances)
+        {
+            var scope = state.CurrentScope;
+
+            // Add all variables and locally defined busses
+            foreach (var decl in declarations)
+            {
+                if (decl is EnumDeclaration en)
+                {
+                    var e = new Instance.EnumTypeReference(en);
+                    scope.SymbolTable.Add(e.Name, e);
+                    using (state.StartScope(e))
+                        CreateAndRegisterInstance(state, e);
+                    parentInstances.Add(e);
+
+                }
+                else if (decl is FunctionDefinition fdef)
+                {
+                    scope.SymbolTable.Add(fdef.Name.Name, decl);
+                }
+                else if (decl is ConstantDeclaration cdecl)
+                {
+                    var c = new Instance.ConstantReference(cdecl);
+                    scope.SymbolTable.Add(c.Name, c);
+                    parentInstances.Add(c);
+                }
+                else if (decl is VariableDeclaration variable)
+                {
+                    var v = new Instance.Variable(variable);
+                    scope.SymbolTable.Add(v.Name, v);
+                    parentInstances.Add(v);
+                }
+                else if (decl is BusDeclaration bus)
+                {
+                    var b = new Instance.Bus(bus);
+                    scope.SymbolTable.Add(b.Name, b);
+                    using (state.StartScope(b))
+                        CreateAndRegisterInstance(state, b);
+                    parentInstances.Add(b);
+                }
+                else
+                    throw new ParserException($"Unable to process {decl.GetType()} inside a process", decl);
             }
         }
 

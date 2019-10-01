@@ -47,7 +47,7 @@ namespace SMEIL.Parser.Instance
         /// <summary>
         /// The source instantiation element
         /// </summary>
-        public AST.InstanceDeclaration DeclarationSource => Source;
+        public AST.ParameterMap[] ParameterMap => Source.Parameters;
 
         /// <summary>
         /// The types assigned to each expression in this instance

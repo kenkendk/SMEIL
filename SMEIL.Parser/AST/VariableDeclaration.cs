@@ -4,7 +4,7 @@ namespace SMEIL.Parser.AST
     /// <summary>
     /// A variable or constant item
     /// </summary>
-    public class VariableDeclaration : Declaration
+    public class VariableDeclaration : Declaration, IFunctionDeclaration
     {
         /// <summary>
         /// The variable name

@@ -16,8 +16,46 @@ namespace SMEIL.Parser.Validation
         /// <param name="state">The validation state</param>
         public void Validate(ValidationState state)
         {
+            // We need to assign the constant and variable types 
+            // before we try to match the parameters
+            foreach (var item in state.AllInstances)
+            {
+                if (item is Instance.Module m)
+                    ResolveTypes(state, m.Instances, state.LocalScopes[m]);
+                else if (item is Instance.Network nv)
+                    ResolveTypes(state, nv.Instances, state.LocalScopes[nv]);
+                else if (item is Instance.Process pc)
+                    ResolveTypes(state, pc.Instances, state.LocalScopes[pc]);
+                else if (item is Instance.FunctionInvocation fi)
+                    ResolveTypes(state, fi.Instances, state.LocalScopes[fi]);
+            }
+
+            // Then wire up the parameters
             foreach (var item in state.AllInstances.OfType<Instance.IParameterizedInstance>())
                 WireUpParameters(state, item);
+        }
+
+        /// <summary>
+        /// The instances 
+        /// </summary>
+        /// <param name="state">The validation state</param>
+        /// <param name="instances">The instances to assign types to</param>
+        /// <param name="scope">The scope to use for lookup</param>
+        private void ResolveTypes(ValidationState state, IEnumerable<Instance.IInstance> instances, ScopeState scope)
+        {
+            foreach (var r in instances)
+            {
+                if (r is Instance.ConstantReference cref)
+                {
+                    if (cref.ResolvedType == null)
+                        cref.ResolvedType = state.ResolveTypeName(cref.Source.DataType, scope);
+                }
+                else if (r is Instance.Variable v)
+                {
+                    if (v.ResolvedType == null)
+                        v.ResolvedType = state.ResolveTypeName(v.Source.Type, scope);
+                }
+            }
         }
 
         /// <summary>
@@ -47,7 +85,7 @@ namespace SMEIL.Parser.Validation
                     .ToDictionary(x => x.Name, x => x.i);
 
 
-                foreach (var p in sourceinstance.DeclarationSource.Parameters)
+                foreach (var p in sourceinstance.ParameterMap)
                 {
                     var pos = position;
                     if (p.Name == null)
