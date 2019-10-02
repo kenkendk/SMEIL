@@ -276,7 +276,13 @@ namespace SMEIL.Parser.Validation
 
                     // Force the right-hand side to be the type we are assigning to
                     if (!object.Equals(exprType, targetType))
+                    {
+                        // Make sure we do not loose bits with implicit typecasting
+                        if (exprType.BitWidth > targetType.BitWidth && targetType.BitWidth > 0)
+                            throw new ParserException($"Assignment would loose precision from {exprType.BitWidth} bits to {targetType.BitWidth}", item.Current);
+
                         assignedTypes[assignmentStatement.Value = new AST.TypeCast(assignmentStatement.Value, targetType, false)] = targetType;
+                    }
 
                     state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Write, item.Current);
                 }

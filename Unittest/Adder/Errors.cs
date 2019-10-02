@@ -12,6 +12,34 @@ namespace Unittest.Adder
     {
         [TestMethod]
         [ExpectedException(typeof(ParserException))]
+        public void TestConstantError1()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/constant_func_ref.sme", 9, 34, "y");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestConstantError2()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/variable_constant.sme", 5, 30, "y");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestConstantError3()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/constant_mutual_ref.sme", 5, 24, "b");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestConstantError4()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/constant_self_ref.sme", 5, 34, "invalid");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
         public void TestAdderSyntaxError1()
         {
             RunWithPositionArgs("../../../smeil/error/syntax/adder_syntax_error1.sme", 1, 1, "type");

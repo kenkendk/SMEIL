@@ -1,0 +1,17 @@
+type tdata: { val: i32; };
+
+function y(out n: tdata) {
+    n.val = 0;
+}
+
+proc plusone(in inbus: tdata, out outbus: tdata)
+    // Constant with function ref
+    const invalid: integer = 1 + y;
+{
+    trace("Wrote value {}", inbus.val);
+    outbus.val = inbus.val + invalid;
+}
+
+network plusone_net(in source: tdata, out dest: tdata) {    
+    instance plusone_inst of plusone(source, dest);
+}

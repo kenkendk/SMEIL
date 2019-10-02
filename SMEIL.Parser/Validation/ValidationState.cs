@@ -618,6 +618,7 @@ namespace SMEIL.Parser.Validation
         {
             var modules = new IValidator[] {
                 new CreateInstances(),
+                new CheckConstantAssignments(),
                 new WireParameters(),
                 new AssignTypes(),
                 new BuildDependencyGraph(),

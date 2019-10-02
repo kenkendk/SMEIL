@@ -1,0 +1,14 @@
+type tdata: { val: i32; };
+
+proc plusone(in inbus: tdata, out outbus: tdata)
+    // Constant with mutual-ref
+    const a: integer = b;
+    const b: integer = a;
+{
+    trace("Wrote value {}", inbus.val);
+    outbus.val = inbus.val + invalid;
+}
+
+network plusone_net(in source: tdata, out dest: tdata) {    
+    instance plusone_inst of plusone(source, dest);
+}
