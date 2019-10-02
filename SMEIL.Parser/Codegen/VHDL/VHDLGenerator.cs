@@ -2461,7 +2461,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                         using(state.Indenter())
                         {
                             // Main contents
-                            impl += RenderStatements(state, pdef.Statements);
+                            impl += RenderStatements(state, process.Statements);
 
                             impl += RenderLines(state,
                                 "reentry_guard := RDY;",

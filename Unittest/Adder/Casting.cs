@@ -24,12 +24,6 @@ namespace Unittest.Adder
         }
 
         [TestMethod]
-        public void DownsizeCastingImplicitType()
-        {
-            TestAdderCasting_core("../../../smeil/casting/downsize_casting_implicit_type.sme");
-        }
-
-        [TestMethod]
         public void DownsizeCastingWithBusShape()
         {
             TestAdderCasting_core("../../../smeil/casting/downsize_casting_with_busshape.sme");

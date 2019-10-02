@@ -67,5 +67,16 @@ namespace SMEIL.Parser.AST
             Explicit = @explicit;
         }
 
+        /// <summary>
+        /// Clones this expression and returns a copy of it
+        /// </summary>
+        /// <returns>A copy of the expression</returns>
+        public override Expression Clone()
+            => new TypeCast(
+                SourceToken,                
+                Expression.Clone(),
+                TargetName,
+                Explicit
+            );
     }
 }
