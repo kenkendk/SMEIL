@@ -6,7 +6,7 @@ proc plusone(in inbus: tdata, out outbus: tdata)
     const b: int = a;
 {
     trace("Wrote value {}", inbus.val);
-    outbus.val = inbus.val + invalid;
+    outbus.val = inbus.val + a;
 }
 
 network plusone_net(in source: tdata, out dest: tdata) {    

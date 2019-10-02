@@ -1,7 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using SMEIL.Parser.AST;
-using SMEIL.Parser.Instance;
 
 namespace SMEIL.Parser.Validation
 {
@@ -12,42 +12,64 @@ namespace SMEIL.Parser.Validation
     {
         public void Validate(ValidationState state)
         {
-            foreach (var e in state.AllInstances
-                .Where(x => x is Instance.Module 
-                    || x is Instance.Network 
-                    || x is Instance.Process 
-                    || x is Instance.FunctionInvocation))
-                {
-                    if (e is Instance.Module m)
-                        CheckInitializer(state, m, m.ModuleDefinition.Declarations);
-                    else if (e is Instance.Network n)
-                        CheckInitializer(state, n, n.NetworkDefinition.Declarations);
-                    else if (e is Instance.Process p)
-                        CheckInitializer(state, p, p.ProcessDefinition.Declarations);
-                    else if (e is Instance.FunctionInvocation f)
-                        CheckInitializer(state, f, f.Source.Declarations);
-                    else
-                        throw new InvalidOperationException("Unexpected type");
-            }
+            var constParentMap = state.AllInstances
+                .OfType<Instance.IDeclarationContainer>()
+                .SelectMany(x => 
+                    x.Declarations
+                        .OfType<AST.ConstantDeclaration>()
+                        .Select(y => new {
+                            Constant= y,
+                            Parent = (Instance.IInstance)x
+                        })
+                )
+                .GroupBy(x => x.Constant)
+                .ToDictionary(
+                    x => x.Key,
+                    x => x.First().Parent
+                );
+
+            foreach (var e in state.AllInstances.OfType<Instance.IDeclarationContainer>())
+                CheckInitializer(state, e, e.Declarations, constParentMap);
         }
 
-        private void CheckInitializer(ValidationState state, Instance.IInstance parent, Declaration[] declarations)
+        private void CheckInitializer(ValidationState state, Instance.IInstance parent, IEnumerable<Declaration> declarations, Dictionary<AST.ConstantDeclaration, Instance.IInstance> constParentMap)
         {
             foreach (var item in declarations)
             {
                 if (item is AST.ConstantDeclaration cdecl)
                 {
-                    CheckInitializer(state, parent, cdecl.Expression);
+                    var dependson = new HashSet<AST.ConstantDeclaration>();
+                    var visited = new HashSet<AST.ConstantDeclaration>();
+                    CheckInitializer(state, parent, cdecl.Expression, dependson);
+
+                    // Repeat lookup
+                    while(dependson.Count != 0)
+                    {
+                        if (dependson.Contains(cdecl))
+                            throw new ParserException($"Cannot have {(visited.Count == 0 ? "self" : "circular")}-refrence in a constant initializer", cdecl);
+
+                        var work = dependson.Where(x => !visited.Contains(x)).ToList();
+                        dependson = new HashSet<ConstantDeclaration>();
+
+                        foreach (var nc in work)
+                        {
+                            CheckInitializer(state, constParentMap[nc], nc.Expression, dependson);
+                            visited.Add(nc);
+                        }
+                    }
                 }
                 else if (item is AST.VariableDeclaration vdecl)
                 {
                     if (vdecl.Initializer != null)
-                        CheckInitializer(state, parent, vdecl.Initializer);
+                    {
+                        var visited = new HashSet<AST.ConstantDeclaration>();
+                        CheckInitializer(state, parent, vdecl.Initializer, visited);
+                    }
                 }
             }
         }
 
-        private void CheckInitializer(ValidationState state, Instance.IInstance parent, Expression expr)
+        private void CheckInitializer(ValidationState state, Instance.IInstance parent, Expression expr, HashSet<AST.ConstantDeclaration> visited)
         {
             if (expr is LiteralExpression)
                 return;
@@ -55,19 +77,25 @@ namespace SMEIL.Parser.Validation
             {
                 var scope = state.LocalScopes[parent];
                 var s = state.FindSymbol(ne.Name, scope);
-                if (s is Instance.Literal || s is Instance.ConstantReference)
+                if (s is Instance.Literal)
                     return;
+
+                if (s is Instance.ConstantReference cref)
+                {
+                    visited.Add(cref.Source);
+                    return;
+                }
 
                 throw new ParserException($"Symbol {ne.Name.AsString} resolves to {s?.GetType()} but must be either a constant or a literal", ne);
             }
             else if (expr is TypeCast te)
-                CheckInitializer(state, parent, te.Expression);
+                CheckInitializer(state, parent, te.Expression, visited);
             else if (expr is UnaryExpression ue)
-                CheckInitializer(state, parent, ue.Expression);
+                CheckInitializer(state, parent, ue.Expression, visited);
             else if (expr is BinaryExpression be)
             {
-                CheckInitializer(state, parent, be.Left);
-                CheckInitializer(state, parent, be.Right);
+                CheckInitializer(state, parent, be.Left, visited);
+                CheckInitializer(state, parent, be.Right, visited);
             }
 
         }

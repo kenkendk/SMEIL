@@ -28,14 +28,14 @@ namespace Unittest.Adder
         [ExpectedException(typeof(ParserException))]
         public void TestConstantError3()
         {
-            RunWithPositionArgs("../../../smeil/error/symbol/constant_mutual_ref.sme", 5, 24, "b");
+            RunWithPositionArgs("../../../smeil/error/symbol/constant_mutual_ref.sme", 5, 5, "const");
         }
 
         [TestMethod]
         [ExpectedException(typeof(ParserException))]
         public void TestConstantError4()
         {
-            RunWithPositionArgs("../../../smeil/error/symbol/constant_self_ref.sme", 5, 34, "invalid");
+            RunWithPositionArgs("../../../smeil/error/symbol/constant_self_ref.sme", 5, 5, "const");
         }
 
         [TestMethod]

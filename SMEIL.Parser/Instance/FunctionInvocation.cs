@@ -8,7 +8,7 @@ namespace SMEIL.Parser.Instance
     /// <summary>
     /// Invocation of a function
     /// </summary>
-    public class FunctionInvocation : IParameterizedInstance
+    public class FunctionInvocation : IParameterizedInstance, IDeclarationContainer
     {
         /// <summary>
         /// The mapped values for the parameters
@@ -54,6 +54,11 @@ namespace SMEIL.Parser.Instance
         /// The statement performing the invocation
         /// </summary>
         public readonly AST.FunctionStatement Statement;
+
+        /// <summary>
+        /// The declarations in this item
+        /// </summary>
+        public IEnumerable<AST.Declaration> Declarations => Source.Declarations;
 
         /// <summary>
         /// A copy of the statements inside the function

@@ -25,7 +25,7 @@ namespace SMEIL.Parser.Instance
     /// Represents a process instance
     /// </summary>
     [DebuggerDisplay("Process = {Name}")]
-    public class Process : IParameterizedInstance
+    public class Process : IParameterizedInstance, IDeclarationContainer
     {
         /// <summary>
         /// The name of the item, or null for anonymous instances
@@ -41,6 +41,11 @@ namespace SMEIL.Parser.Instance
         /// The process that this instance is from
         /// </summary>
         public readonly AST.Process ProcessDefinition;
+
+        /// <summary>
+        /// The declarations in this item
+        /// </summary>
+        public IEnumerable<AST.Declaration> Declarations => ProcessDefinition.Declarations;
 
         /// <summary>
         /// The process type

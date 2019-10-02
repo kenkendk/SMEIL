@@ -536,7 +536,7 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                 if (consts.Any())
                 {
-                    // Build a lookup table for each constant
+                    // Build a lookup table for each constant declaration
                     var constDecls = ValidationState.Modules.Values
                         .SelectMany(x => x.All())
                         .Where(x => x.Current is AST.ConstantDeclaration)
@@ -545,15 +545,38 @@ namespace SMEIL.Parser.Codegen.VHDL
                             x => x.Parents.ToArray()
                         );
 
+                    var constScopes = ValidationState.AllInstances
+                        .OfType<Instance.IDeclarationContainer>()
+                        .SelectMany(x => 
+                            x.Declarations
+                                .OfType<AST.ConstantDeclaration>()
+                                .Select(y => new {
+                                    Constant = y,
+                                    Parent = x
+                                })
+                        )
+                        .GroupBy(x => x.Constant)
+                        .ToDictionary(x => x.Key, x => x.First());
+
+
                     decl += RenderLines(state,
                         "-- Constant definitions"
                     );
 
+                    // Build all names before rendering, to allow constants to reference other
+                    // constants in the initializer
+                    var constNames = consts.ToDictionary(
+                        x => x.Key,
+                        x => CreateUniqueGlobalName(x.Key, SanitizeVHDLName(RenderScopeName(constDecls[x.Key], x.Key.Name.Name)))
+                    );
+
                     decl += RenderLines(state,
                         consts.Select(x => {
-                            var source = constDecls[x.Key];
-                            var name = CreateUniqueGlobalName(x.Key, SanitizeVHDLName(RenderScopeName(source, x.Key.Name.Name)));
-                            return $"constant {name}: {RenderNativeType(x.First().ResolvedType)} := {RenderExpression(state, x.Key.Expression)};";
+                            var scope = constScopes[x.Key];
+                            var name = constNames[x.Key];
+                            
+                            using(state.StartScope(scope.Parent))
+                                return $"constant {name}: {RenderNativeType(x.First().ResolvedType)} := {RenderExpression(state, x.Key.Expression)};";
                         })
                     );
                     decl += RenderLines(state,
