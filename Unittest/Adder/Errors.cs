@@ -14,7 +14,7 @@ namespace Unittest.Adder
         [ExpectedException(typeof(ParserException))]
         public void TestConstantError1()
         {
-            RunWithPositionArgs("../../../smeil/error/symbol/constant_func_ref.sme", 9, 34, "y");
+            RunWithPositionArgs("../../../smeil/error/symbol/constant_func_ref.sme", 9, 30, "y");
         }
 
         [TestMethod]

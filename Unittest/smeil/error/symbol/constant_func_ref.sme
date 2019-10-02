@@ -6,7 +6,7 @@ function y(out n: tdata) {
 
 proc plusone(in inbus: tdata, out outbus: tdata)
     // Constant with function ref
-    const invalid: integer = 1 + y;
+    const invalid: int = 1 + y;
 {
     trace("Wrote value {}", inbus.val);
     outbus.val = inbus.val + invalid;

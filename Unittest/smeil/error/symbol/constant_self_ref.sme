@@ -2,7 +2,7 @@ type tdata: { val: i32; };
 
 proc plusone(in inbus: tdata, out outbus: tdata)
     // Constant with self-ref
-    const invalid: integer = 1 + invalid;
+    const invalid: int = 1 + invalid;
 {
     trace("Wrote value {}", inbus.val);
     outbus.val = inbus.val + invalid;
