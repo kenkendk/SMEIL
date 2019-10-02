@@ -29,6 +29,7 @@ namespace SMEIL.Parser
         /// <returns>The parsed syntax tree</returns>
         public static AST.Module Parse(IBufferedEnumerator<ParseToken> tokens)
         {
+            // Basic identifier definition
             var ident = Mapper(RegEx(@"\w[\w\d\-_]*"), x => new AST.Identifier(x.Item));
             
             var integer = Mapper(
@@ -381,9 +382,7 @@ namespace SMEIL.Parser
                 Composite(
                     "else",
                     "{",
-                    Sequence(
-                        statement
-                    ),
+                    Sequence(statement),
                     "}"
                 ),
 
@@ -456,10 +455,9 @@ namespace SMEIL.Parser
                     "switch",
                     simpleExpression,
                     "{",
-                    Composite(
-                        switchCase,
-                        Sequence(switchCase)
-                    ),
+                    // The BNF specifies at least one, but we allow
+                    // zero here, and throw a more descriptive error
+                    Sequence(switchCase),
                     Optional(                        
                         Composite(
                             "default",
@@ -474,12 +472,8 @@ namespace SMEIL.Parser
                 x => 
                 {
                     var defaultCase = x.FindSubMatch(0, 4, 0, 2).InvokeFirstLevelMappers(statement).ToArray();
-                    // Grab the mandatory, then the optional
                     // we cannot use the normal recursive mapper as we may have embedded switch statements
-                    var cases = 
-                        x.FindSubMatch(0, 3).InvokeFirstLevelMappers(switchCase)
-                            .Concat(x.FindSubMatch(0, 3, 1).InvokeFirstLevelMappers(switchCase)
-                        );
+                    var cases = x.FindSubMatch(0, 3).InvokeFirstLevelMappers(switchCase);
 
                     if (defaultCase.Length > 0)
                         cases = cases.Concat(new[] { new Tuple<AST.Expression, AST.Statement[]>(null, defaultCase) });
@@ -710,8 +704,14 @@ namespace SMEIL.Parser
                     "enum",
                     ident,
                     "{",
-                    enumFieldDeclaration,
-                    Sequence(Composite(",", enumFieldDeclaration)),
+                    // The BNF specifies at least one, but we allow
+                    // zero in the parsing to give better error messages
+                    Optional(
+                        Composite(
+                            enumFieldDeclaration,
+                            Sequence(Composite(",", enumFieldDeclaration))
+                        )
+                    ),
                     "}",
                     ";"
                 ),
@@ -761,7 +761,6 @@ namespace SMEIL.Parser
                     ")",
                     Sequence(funcDecls),
                     "{",
-                    statement,
                     Sequence(statement),                    
                     "}"
                 ),
@@ -808,7 +807,8 @@ namespace SMEIL.Parser
                     Choice(
                         Composite(
                             "{",
-                            busSignalDeclaration,
+                            // The BNF specifies at least one signal, but
+                            // we allow zero, and throw a descriptive error
                             Sequence(busSignalDeclaration),
                             "}"
                         ),
@@ -886,7 +886,6 @@ namespace SMEIL.Parser
                         typename,
                         Composite(
                             "{",
-                            busSignalDeclaration,
                             Sequence(busSignalDeclaration),
                             "}"
                         )
@@ -1088,7 +1087,6 @@ namespace SMEIL.Parser
                     Sequence(
                         moduleDecl
                     ),
-                    entity,
                     Sequence(entity)
                 ),
 

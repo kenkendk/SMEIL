@@ -30,6 +30,8 @@ namespace SMEIL.Parser.AST
         {
             Value = value ?? throw new ArgumentNullException(nameof(value));
             Cases = cases ?? throw new ArgumentNullException(nameof(cases));
+            if (Cases.Length == 0)
+                throw new ParserException($"A switch statement must have at least one case", token);
         }
 
         /// <summary>

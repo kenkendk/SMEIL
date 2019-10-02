@@ -43,6 +43,8 @@ namespace SMEIL.Parser.AST
             Name = name ?? throw new ArgumentNullException(nameof(name));
             Signals = signals;
             TypeName = typename;
+            if (TypeName == null && Signals.Length == 0)
+                throw new ParserException($"A bus must have at least one signal", token);
 
         }
     }

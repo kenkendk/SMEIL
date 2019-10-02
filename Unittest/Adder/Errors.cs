@@ -14,14 +14,14 @@ namespace Unittest.Adder
         [ExpectedException(typeof(ParserException))]
         public void TestAdderSyntaxError1()
         {
-            RunWithPositionArgs("../../../smeil/error/syntax/adder_syntax_error1.sme", 1, 24, "}");
+            RunWithPositionArgs("../../../smeil/error/syntax/adder_syntax_error1.sme", 1, 1, "type");
         }
 
         [TestMethod]
         [ExpectedException(typeof(ParserException))]
         public void TestAdderSyntaxError2()
         {
-            RunWithPositionArgs("../../../smeil/error/syntax/adder_syntax_error2.sme", 1, 12, "{");
+            RunWithPositionArgs("../../../smeil/error/syntax/adder_syntax_error2.sme", 1, 1, "type");
         }
 
         [TestMethod]

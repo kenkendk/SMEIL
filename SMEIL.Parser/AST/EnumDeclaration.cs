@@ -23,6 +23,8 @@ namespace SMEIL.Parser.AST
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
             Fields = fields ?? throw new ArgumentNullException(nameof(fields));
+            if (Fields.Length == 0)
+                throw new ParserException($"Enumerations must have at least one field", token);
         }
     }
 }

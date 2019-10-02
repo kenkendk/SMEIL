@@ -74,6 +74,24 @@ namespace SMEIL.Parser
                 Console.WriteLine("[{0}:{1}] \"{2}\": {3}", ex.Location.Line, ex.Location.LineOffset, ex.Location.Text, ex.Message);
                 return 3;
             }
+            catch (System.Reflection.TargetInvocationException tex)
+            {
+                if (tex.InnerException is ParserException pex)
+                {
+                    Console.WriteLine("[{0}:{1}] \"{2}\": {3}", pex.Location.Line, pex.Location.LineOffset, pex.Location.Text, pex.Message);
+                    return 3;
+                }
+                throw;
+            }
+            catch (AggregateException aex)
+            {
+                if (aex.InnerExceptions.Count() == 1 && aex.InnerException is ParserException pex)
+                {
+                    Console.WriteLine("[{0}:{1}] \"{2}\": {3}", pex.Location.Line, pex.Location.LineOffset, pex.Location.Text, pex.Message);
+                    return 3;
+                }
+                throw;
+            }
 
             return 0;
         }
