@@ -17,7 +17,7 @@
 
 \section*{Grammar}
 \begin{grammar}
-  <module> ::= \{ <import-stm> \} \\ \{ <type-def> \} \\ <entity> \{ <entity> \}
+  <module> ::= \{ <import-stm> \} \\ \{ <module-decl> \} \\ \{ <entity> \}
 
   <import-stm> ::= `import' <import-name> [ <qualified-specifier> ] `;'
   \alt `from' <import-name> \\ `import' <ident> \{ `,' <ident> \} [ <qualified-specifier> ]
@@ -27,7 +27,7 @@
 
   <qualified-specifier> ::= `as' <ident>
 
-  <import-decl> ::= <type-def>
+  <module-decl> ::= <type-def>
   \alt <const-decl>
   \alt <enum-decl>
   \alt <func-decl>
