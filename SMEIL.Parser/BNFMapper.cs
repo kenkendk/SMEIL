@@ -331,7 +331,7 @@ namespace SMEIL.Parser
                         {
                             // If this is a single terminal expression, just return it
                             var pm = n.FirstMapper(prev_locked);
-                            var subOp = n.FirstMapper(tmp);
+                            var subOp = n.FindSubMatch(0).InvokeFirstLevelMappers(tmp).FirstOrDefault();
                             if (subOp.Operation == null)
                                 return pm;
 
