@@ -186,6 +186,23 @@ namespace SMEIL.Parser
                 }
             );
 
+            var typename = Mapper(
+                Composite(
+                    Optional(
+                        Composite("[", expression, "]")
+                    ),
+                    Choice(
+                        simpletypename,
+                        name
+                    )
+                ),
+
+                x =>
+                    x.FindSubMatch(0, 1, 0)?.Token == simpletypename
+                        ? new AST.TypeName(new AST.DataType(x.Item, x.FirstMapper(simpletypename)), x.FirstOrDefaultMapper(expression))
+                        : new AST.TypeName(x.FirstMapper(name), x.FirstOrDefaultMapper(expression))
+            );            
+
             // Mapping expressions to parameters
             var parammap = Mapper(
                 Composite(
@@ -560,24 +577,6 @@ namespace SMEIL.Parser
                 assertStatement,
                 breakStatement,
                 functionStatement
-            );
-
-
-            var typename = Mapper(
-                Composite(
-                    Optional(
-                        Composite("[", expression, "]")
-                    ),
-                    Choice(
-                        simpletypename, 
-                        name
-                    )
-                ),
-
-                x => 
-                    x.FindSubMatch(0, 1, 0)?.Token == simpletypename
-                        ? new AST.TypeName(new AST.DataType(x.Item, x.FirstMapper(simpletypename)), x.FirstOrDefaultMapper(expression))
-                        : new AST.TypeName(x.FirstMapper(name), x.FirstOrDefaultMapper(expression))
             );
 
             var range = Mapper(
