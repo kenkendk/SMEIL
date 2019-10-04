@@ -169,12 +169,19 @@ namespace SMEIL.Parser.AST
                 return new DataType(token, ILType.SignedInteger, -1);
             if (token.Text == "uint")
                 return new DataType(token, ILType.UnsignedInteger, -1);
+            if (token.Text == "float")
+                return new DataType(token, ILType.Bool, -1);
             if (token.Text == "bool")
                 return new DataType(token, ILType.Bool, 1);
+            if (token.Text == "f8")
+                return new DataType(token, ILType.Float, 8);
+            if (token.Text == "f16")
+                return new DataType(token, ILType.Float, 16);
             if (token.Text == "f32")
-                return new DataType(token, ILType.Float, 1);
+                return new DataType(token, ILType.Float, 32);
             if (token.Text == "f64")
-                return new DataType(token, ILType.Float, 1);
+                return new DataType(token, ILType.Float, 64);
+
             if (token.Text.StartsWith("i", StringComparison.Ordinal) || token.Text.StartsWith("u", StringComparison.Ordinal))
             {
                 if (!int.TryParse(token.Text.Substring(1), out var width) || width <= 0)
