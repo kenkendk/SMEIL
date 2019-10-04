@@ -96,12 +96,7 @@ namespace SMEIL.Parser
 
             var simpletypename = Mapper(
                 Choice(
-                    CustomItem(x => (x.StartsWith("i") || x.StartsWith("u")) && int.TryParse(x.Substring(1), out var _)),
-                    "int",
-                    "uint",
-                    "f32",
-                    "f64",
-                    "bool"
+                    CustomItem(x => AST.DataType.IsValidIntrinsicType(x))
                 ),
 
                 x => AST.DataType.Parse(x.Item)
