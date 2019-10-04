@@ -684,7 +684,7 @@ namespace SMEIL.Parser
                     ident,
                     Optional(
                         Composite(
-                            "",
+                            "=",
                             int32literal
                         )
                     )
