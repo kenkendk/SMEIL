@@ -8,7 +8,7 @@ namespace SMEIL.Parser.Validation
     /// <summary>
     /// Validator that checks initial assignments only reference constant values or literals
     /// </summary>
-    public class CheckConstantAssignments : IValidator
+    public class VerifyConstantAssignments : IValidator
     {
         public void Validate(ValidationState state)
         {
@@ -77,7 +77,7 @@ namespace SMEIL.Parser.Validation
             {
                 var scope = state.LocalScopes[parent];
                 var s = state.FindSymbol(ne.Name, scope);
-                if (s is Instance.Literal)
+                if (s is Instance.Literal || s is Instance.EnumFieldReference)
                     return;
 
                 if (s is Instance.ConstantReference cref)

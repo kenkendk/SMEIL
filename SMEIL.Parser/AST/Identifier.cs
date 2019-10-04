@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 
 namespace SMEIL.Parser.AST
@@ -35,5 +36,23 @@ namespace SMEIL.Parser.AST
             var m = System.Text.RegularExpressions.Regex.Match(text, @"\w[\w\d\-_]*");
             return m.Success && m.Length == text.Length;
         }
+
+        /// <summary>
+        /// Lookup table with all keywords
+        /// </summary>
+        private static readonly HashSet<string> _KEYWORDS = new HashSet<string>(new [] {
+            "as", "async", "await", "barrier", "break", "bus", "case", "const", "connect",
+            "clocked", "default", "elif", "else", "enum", "exposed", "for", "from", "function",
+            "generate", "if", "import", "in", "instance", "network", "of", "out", "proc",
+            "range", "return", "switch", "sync", "to", "unique", "var", "wait", "where",       
+        }, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Checks if an item is a keyword
+        /// </summary>
+        /// <param name="text">The item to test</param>
+        /// <returns><c>true</c> if the item is a keyword, <c>false</c> otherwise</returns>
+        public static bool IsReservedKeyword(string text) 
+            => _KEYWORDS.Contains(text);
     }
 }

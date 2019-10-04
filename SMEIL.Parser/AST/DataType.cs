@@ -193,6 +193,33 @@ namespace SMEIL.Parser.AST
         }
 
         /// <summary>
+        /// The reserved typenames
+        /// </summary>
+        private static readonly HashSet<string> _BUILTINS = new HashSet<string>(new [] {
+            "int", "uint", "float", "bool", "f8", "f16", "f32", "f64"
+        }, StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Checks if a string is a valid intrinsic type
+        /// </summary>
+        /// <param name="text">The text to verify</param>
+        /// <returns><c>true</c> if the string is a valid intrinsic type, <c>false</c> otherwise</returns>
+        public static bool IsValidIntrinsicType(string text)
+        {
+             if (_BUILTINS.Contains(text))
+                return true;
+
+            if (text.StartsWith("i", StringComparison.Ordinal) || text.StartsWith("u", StringComparison.Ordinal))
+            {
+                if (int.TryParse(text.Substring(1), out var width) && width > 0)
+                    return true;
+            }
+
+            return false;
+        }
+        
+
+        /// <summary>
         /// Checks if the two instances are the same data type
         /// </summary>
         /// <param name="other">The type to compare with</param>

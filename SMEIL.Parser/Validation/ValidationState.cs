@@ -607,6 +607,8 @@ namespace SMEIL.Parser.Validation
                 return signalInstance.ResolvedType;
             else if (instance is Instance.Variable variableInstance)
                 return variableInstance.ResolvedType;
+            else if (instance is Instance.EnumFieldReference enumFieldReference)
+                return new AST.DataType(enumFieldReference.Source.SourceToken, enumFieldReference.ParentType.Source);
             else
                 throw new ArgumentException($"Unable to get the type of {instance}");
         }
@@ -617,8 +619,9 @@ namespace SMEIL.Parser.Validation
         public void Validate()
         {
             var modules = new IValidator[] {
+                new VerifyIdentifiers(),
                 new CreateInstances(),
-                new CheckConstantAssignments(),
+                new VerifyConstantAssignments(),
                 new WireParameters(),
                 new AssignTypes(),
                 new BuildDependencyGraph(),
@@ -709,8 +712,13 @@ namespace SMEIL.Parser.Validation
         /// <param name="scope">The scope to use</param>
         public void RegisterSymbols(AST.Module module, ScopeState scope)
         {
-            foreach (var tdef in module.Declarations.OfType<TypeDefinition>())
-                scope.TypedefinitionTable.Add(tdef.Name.Name, tdef);
+            foreach (var decl in module.Declarations)
+            {
+                if (decl is TypeDefinition tdef)
+                    scope.TypedefinitionTable.Add(tdef.Name.Name, tdef);
+                else
+                    RegisterSymbols(decl, scope);
+            }
 
             foreach (var ent in module.Entities)
             {
