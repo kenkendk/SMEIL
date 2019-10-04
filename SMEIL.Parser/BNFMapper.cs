@@ -697,7 +697,7 @@ namespace SMEIL.Parser
                 x => new AST.EnumField(
                     x.Item, 
                     x.FirstMapper(ident), 
-                    x.FindSubMatch(0, 1, 2) == null
+                    x.FindSubMatch(0, 1, 0, 1) == null
                         ? -1 
                         : x.FirstOrDefaultMapper(int32literal)
                 )
