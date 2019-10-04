@@ -66,6 +66,10 @@ namespace SMEIL.Parser.Validation
                     CheckIdentifier(genDecl.Name);
                 else if (n is AST.TypeDefinition typeDef)
                     CheckIdentifier(typeDef.Name);
+                else if (n is AST.ConnectDeclaration)
+                {
+                    // No names here
+                }
                 else 
                     throw new InvalidOperationException($"Unexpected declaration type: {n.GetType()}");
             }

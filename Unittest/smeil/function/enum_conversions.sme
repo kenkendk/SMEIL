@@ -1,0 +1,32 @@
+type tdata: { val: i32; };
+
+enum nn {
+    p1 = 0,
+    p2,
+    p3 = 3,
+    p4,
+    p5 = 6
+};
+
+const ef : nn = nn.p2;
+
+function tryme_nn(const adder1: nn, const adder2: nn, out outbus: tdata)
+{
+    outbus.val = (int)(nn)((int)adder1 + (int)adder2);
+}
+
+function add_nn(in inbus: tdata, const adder: nn, out outbus: tdata)
+{
+    outbus.val = inbus.val + (int)adder;
+}
+
+proc plusone(in inbus: tdata, out outbus: tdata)
+{
+    tryme_nn(ef, nn.p3, outbus);
+    add_nn(inbus, ef, outbus);
+}
+
+network plusone_net(in source: tdata, out dest: tdata) 
+{    
+    instance plusone_inst of plusone(source, dest);
+}

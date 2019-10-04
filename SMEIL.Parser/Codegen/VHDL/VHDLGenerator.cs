@@ -520,14 +520,25 @@ namespace SMEIL.Parser.Codegen.VHDL
             using(state.Indenter())
             using(state.StartScope(ValidationState.TopLevel.ModuleInstance))
             {
-                funcs = ValidationState.AllInstances
-                    .OfType<Instance.FunctionInvocation>()
-                    .Where(x => funcDecls[x.Source].Last() is AST.Module)
-                    .GroupBy(x => { 
-                        using(state.StartScope(x))
-                            return RenderScopeName(funcDecls[x.Source], x.Name) + "(" + FunctionSignature(state, x) + ")";
-                    })
-                    .ToArray();
+                // All enums are registered as global types in the VHDL
+                if (AllEnums.Any())
+                {
+                    decl += RenderLines(state,
+                        "-- Enum definitions"
+                    );
+
+                    decl += RenderLines(state,
+                        AllEnums.SelectMany(c =>
+                            new string[] {
+                                $"type {GlobalNames[c]} is ({string.Join(", ", c.Fields.Select(x => EnumFieldNames[x]))});",
+                                $"pure function str(b: {GlobalNames[c]}) return string;",
+                                $"pure function TO_INTEGER(b: {GlobalNames[c]}) return integer;",
+                                $"pure function TO_{GlobalNames[c]}(b: integer) return {GlobalNames[c]};",
+                                ""
+                            }
+                        )
+                    );
+                }
 
                 var consts = ValidationState.AllInstances
                     .OfType<Instance.ConstantReference>()
@@ -584,27 +595,15 @@ namespace SMEIL.Parser.Codegen.VHDL
                     );
                 }
 
-                // All enums are registered as global types in the VHDL
-                if (AllEnums.Any())
-                {
-                    decl += RenderLines(state,
-                        "-- Enum definitions",
-                        ""
-                    );
-
-                    decl += RenderLines(state,
-                        AllEnums.SelectMany(c =>
-                            new string[] {
-                                $"type {GlobalNames[c]} is ({string.Join(", ", c.Fields.Select(x => EnumFieldNames[x]))});",
-                                $"pure function str(b: {GlobalNames[c]}) return string;",
-                                $"pure function TO_INTEGER(b: {GlobalNames[c]}) return integer;",
-                                $"pure function TO_{GlobalNames[c]}(b: integer) return {GlobalNames[c]};",
-                                ""
-                            }
-                        )
-                    );
-
-                }
+                funcs = ValidationState.AllInstances
+                    .OfType<Instance.FunctionInvocation>()
+                    .Where(x => funcDecls[x.Source].Last() is AST.Module)
+                    .GroupBy(x =>
+                    {
+                        using (state.StartScope(x))
+                            return RenderScopeName(funcDecls[x.Source], x.Name) + "(" + FunctionSignature(state, x) + ")";
+                    })
+                    .ToArray();
 
                 if (funcs.Any())
                 {
@@ -654,6 +653,18 @@ namespace SMEIL.Parser.Codegen.VHDL
                     foreach (var enm in AllEnums)
                     {
                         var name = GlobalNames[enm];
+                        var values = new Dictionary<AST.EnumField, int>();
+                        
+                        // Assign numerical values to the enum fields
+                        var cur = 0;
+                        foreach (var field in enm.Fields)
+                        {
+                            var ix = field.Value;
+                            if (ix < 0)
+                                ix = cur;
+                            values[field] = ix;
+                            cur = ix + 1;
+                        }                        
 
                         decl += RenderLines(state,
                             $"-- Support functions for {name}",
@@ -680,12 +691,12 @@ namespace SMEIL.Parser.Codegen.VHDL
                             {
                                 decl += RenderLines(state,
                                     enm.Fields.Select(x =>
-                                        $"when {EnumFieldNames[x]} => s := {x.Value};"
+                                        $"when {EnumFieldNames[x]} => s := {values[x]};"
                                     )
                                 );
 
                                 decl += RenderLines(state,
-                                    "when others => s := -1;"
+                                    $"when others => s := {values[enm.Fields.First()]};"
                                 );
                             }
 
@@ -716,7 +727,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                             {
                                 decl += RenderLines(state,
                                     enm.Fields.Select(x =>
-                                        $"when {x.Value} => s := {EnumFieldNames[x]};"
+                                        $"when {values[x]} => s := {EnumFieldNames[x]};"
                                     )
                                 );
 
@@ -3206,6 +3217,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                 return new string[] { RenderConstant(state, literal.Source) };
             else if (parameter.MappedItem is Instance.Variable var)
                 return new string[] { GetUniqueLocalName(state, var) };
+            else if (parameter.MappedItem is Instance.EnumFieldReference enm)
+                return new string[] { EnumFieldNames[enm.Source] };
             else
                 throw new ParserException($"Unable to render parameter input for type: {parameter.MappedItem.GetType()}", parameter.SourceParameter);
         }
@@ -3454,6 +3467,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                     return $"TO_UNSIGNED({RenderExpression(state, typeCast.Expression)}, {destType.BitWidth})";
                 else if (destType.Type == ILType.Bool)
                     return $"TO_BOOL({RenderExpression(state, typeCast.Expression)})";
+                else if (destType.IsEnum)
+                    return $"TO_{GlobalNames[destType.EnumType]}({RenderExpression(state, typeCast.Expression)})";
                 else
                     throw new ArgumentException($"Unable to type-cast from {sourceType} to {destType}");
             }
@@ -3476,8 +3491,17 @@ namespace SMEIL.Parser.Codegen.VHDL
                 }
                 else if (destType.Type == ILType.Bool)
                     return $"TO_BOOL({RenderExpression(state, typeCast.Expression)})";
+                else if (destType.IsEnum)
+                    return $"TO_{GlobalNames[destType.EnumType]}(TO_INTEGER({RenderExpression(state, typeCast.Expression)}))";
                 else
                     throw new ArgumentException($"Unable to type-cast from {sourceType} to {destType}");
+            }
+            else if (sourceType.IsEnum && destType.IsInteger)
+            {
+                if (destType.BitWidth == -1)
+                    return $"TO_INTEGER({RenderExpression(state, typeCast.Expression)})";
+                else
+                    return $"TO_INTEGER(TO_INTEGER({RenderExpression(state, typeCast.Expression)}))";
             }
 
             throw new ArgumentException($"Unable to type-cast from {sourceType} to {destType}");

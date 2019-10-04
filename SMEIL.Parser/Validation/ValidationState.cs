@@ -927,6 +927,14 @@ namespace SMEIL.Parser.Validation
             if (sourceType.IsNumeric && targetType.IsNumeric)
                 return true;
 
+            // Casting from enum to int and vice-versa is allowed
+            if ((sourceType.IsEnum && targetType.IsInteger) || (targetType.IsEnum && sourceType.IsInteger))
+                return true;
+
+            // Casting from float to int and vice-versa is allowed
+            if ((sourceType.IsInteger && targetType.IsFloat) || (targetType.IsInteger && sourceType.IsInteger))
+                return true;
+
             // No idea what the user has attempted :)
             return false;
 

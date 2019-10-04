@@ -17,5 +17,11 @@ namespace Unittest.Adder
             TestAdder_core("../../../smeil/function/adder_function_multi_merged.sme");
         }
 
+        [TestMethod]
+        public void TestEnumConversions()
+        {
+            TestAdder_core("../../../smeil/function/enum_conversions.sme");
+        }
+
     }
 }
