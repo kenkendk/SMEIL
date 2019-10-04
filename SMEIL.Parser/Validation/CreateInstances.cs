@@ -195,9 +195,9 @@ namespace SMEIL.Parser.Validation
             {
                 var fdef = state.FindSymbol(func.Current.Name, scope);
                 if (fdef == null)
-                    throw new ParserException($"No function named {func.Current.Name.Name} found", func.Current);
+                    throw new ParserException($"No function named {func.Current.Name.AsString} found", func.Current);
                 if (!(fdef is AST.FunctionDefinition ffdef))
-                    throw new ParserException($"Expected a function for {func.Current.Name.Name}, but found {fdef.GetType()}", func.Current);
+                    throw new ParserException($"Expected a function for {func.Current.Name.AsString}, but found {fdef.GetType()}", func.Current);
 
                 var f = new Instance.FunctionInvocation(ffdef, func.Current);
                 using (var sc = state.StartScope(f))

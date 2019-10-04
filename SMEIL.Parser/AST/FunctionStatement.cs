@@ -9,7 +9,7 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// The name of the function to invoke
         /// </summary>
-        public readonly Identifier Name;
+        public readonly Name Name;
 
         /// <summary>
         /// The parameters to the function
@@ -22,7 +22,7 @@ namespace SMEIL.Parser.AST
         /// <param name="token">The parse token</param>
         /// <param name="name">The name of the function to invoke</param>
         /// <param name="parameters">The parameter map</param>
-        public FunctionStatement(ParseToken token, Identifier name, ParameterMap[] parameters)
+        public FunctionStatement(ParseToken token, Name name, ParameterMap[] parameters)
             : base(token)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -35,7 +35,7 @@ namespace SMEIL.Parser.AST
         /// <returns>A string representation of the function statement</returns>
         public override string ToString()
         {
-            return $"{Name.Name}({string.Join(", ", Parameters.Select(x => x?.ToString()))});";
+            return $"{Name.AsString}({string.Join(", ", Parameters.Select(x => x?.ToString()))});";
         }
 
         /// <summary>

@@ -23,7 +23,7 @@ namespace SMEIL.Parser.Instance
         /// <summary>
         /// The source name
         /// </summary>
-        public string SourceName => Statement.Name.Name;
+        public string SourceName => Statement.Name.AsString;
 
         /// <summary>
         /// The source item
@@ -38,7 +38,7 @@ namespace SMEIL.Parser.Instance
         /// <summary>
         /// The name of the invoked item
         /// </summary>
-        public string Name => Statement.Name.Name;
+        public string Name => Statement.Name.AsString;
 
         /// <summary>
         /// An unused type assignement dictionary

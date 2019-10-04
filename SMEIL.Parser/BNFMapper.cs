@@ -510,7 +510,7 @@ namespace SMEIL.Parser
 
             var functionStatement = Mapper(
                 Composite(
-                    ident,
+                    name,
                     "(",
                     Optional(
                         Composite(
@@ -529,7 +529,7 @@ namespace SMEIL.Parser
 
                 x => new AST.FunctionStatement(
                     x.Item,
-                    x.FirstMapper(ident),
+                    x.FirstMapper(name),
                     x.InvokeMappers(parammap).ToArray()
                 )
             );
