@@ -5,8 +5,13 @@ namespace SMEIL.Parser.AST
     /// <summary>
     /// Implements a type-cast operation, either explicit or implicit
     /// </summary>
-    public class TypeCast : ParenthesizedExpression
+    public class TypeCast : Expression
     {
+        /// <summary>
+        /// The expression inside the parenthesis
+        /// </summary>
+        public readonly Expression Expression;
+
         /// <summary>
         /// A value indicating if the typecase is explicit (in the source program), or implicit (inserted by the parser)
         /// </summary>
@@ -47,8 +52,9 @@ namespace SMEIL.Parser.AST
         /// <param name="targetype">The target type for the typecast</param>
         /// <param name="explicit">A value indicating if the typecast is explicit or implicit</param>
         public TypeCast(ParseToken token, Expression expression, TypeName targettype, bool @explicit)
-            : base(token, expression)
+            : base(token)
         {
+            Expression = expression ?? throw new ArgumentNullException(nameof(expression));
             TargetName = targettype ?? throw new ArgumentNullException(nameof(targettype));
             Explicit = @explicit;
         }
@@ -61,8 +67,9 @@ namespace SMEIL.Parser.AST
         /// <param name="targetype">The target type for the typecast</param>
         /// <param name="explicit">A value indicating if the typecast is explicit or implicit</param>
         public TypeCast(ParseToken token, Expression expression, DataType targettype, bool @explicit)
-            : base(token, expression)
+            : base(token)
         {
+            Expression = expression ?? throw new ArgumentNullException(nameof(expression));
             TargetName = new TypeName(targettype, null);
             Explicit = @explicit;
         }
