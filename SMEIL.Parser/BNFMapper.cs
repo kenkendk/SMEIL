@@ -222,38 +222,56 @@ namespace SMEIL.Parser
                         : x.FirstMapper(ident),
                     x.FirstMapper(expression)
                 )
-            );            
+            );
+
+
+            // Simple wrapping expressions
+            var nameExpression = Mapper(name, x => new AST.NameExpression(x.Item, x.FirstMapper(name)));
+            var literalExpression = Mapper(literal, x => new AST.LiteralExpression(x.Item, x.FirstMapper(literal)));
+            var parenthesisExpression = Mapper(Composite("(", expression, ")"), x => new AST.ParenthesizedExpression(x.Item, x.FirstMapper(expression)));
+            
+            // We allow typecasts and unary operations only on 
+            // terminating expressions
+            var highBindExpr = Mapper(
+                null,
+                x => x.FirstDerivedMapper<AST.Expression>()
+            );
 
             var unaryExpresssion = Mapper(
-                Composite(unaryOperation, expression),
+                Composite(unaryOperation, highBindExpr),
 
                 x => new AST.UnaryExpression(
                     x.Item,
                     x.FirstMapper(unaryOperation),
-                    x.FirstMapper(expression)
+                    x.FirstMapper(highBindExpr)
                 )
             );
 
             var typeCastExpression = Mapper(
                 Composite(
                     "(",
-                    name,
+                    typename,
                     ")",
-                    expression
+                    highBindExpr
                 ),
 
                 x => new AST.TypeCast(
                     x.Item,
-                    x.FirstMapper(expression),
-                    new AST.TypeName(x.FirstMapper(name), null),
+                    x.FirstMapper(highBindExpr),
+                    x.FirstMapper(typename),
                     true
                 )
             );
 
-            // Simple wrapping expressions
-            var nameExpression = Mapper(name, x => new AST.NameExpression(x.Item, x.FirstMapper(name)));
-            var literalExpression = Mapper(literal, x => new AST.LiteralExpression(x.Item, x.FirstMapper(literal)));
-            var parenthesisExpression = Mapper(Composite("(", expression, ")"), x => new AST.ParenthesizedExpression(x.Item, x.FirstMapper(expression)));
+            // Terminating expressions have highest precedence
+            highBindExpr.Token =
+                Choice(
+                    literalExpression, 
+                    nameExpression, 
+                    unaryExpresssion,
+                    typeCastExpression,
+                    parenthesisExpression                    
+                );
 
             // Create expressions to capture the operator precedence
             var binopPrecedence = new string[][] {
@@ -275,15 +293,7 @@ namespace SMEIL.Parser
             // and chain the precedence levels
 
             // Group the terminal expressions for easy reference
-            var terminatingExpression = Mapper(
-                Choice(new BNF.BNFItem[] {
-                    typeCastExpression,
-                    unaryExpresssion,
-                    parenthesisExpression,
-                    simpleExpression,
-                }),
-                x => x.FirstDerivedMapper<AST.Expression>()
-            );
+            var terminatingExpression = highBindExpr;
 
             // The prev variable is the "next" level, starting with a terminal
             var prev = terminatingExpression;
