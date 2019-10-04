@@ -255,9 +255,6 @@ namespace SMEIL.Parser
             var literalExpression = Mapper(literal, x => new AST.LiteralExpression(x.Item, x.FirstMapper(literal)));
             var parenthesisExpression = Mapper(Composite("(", expression, ")"), x => new AST.ParenthesizedExpression(x.Item, x.FirstMapper(expression)));
 
-            // A simple expression is either a literal or a name
-            var simpleExpression = Mapper(Choice(literalExpression, nameExpression), x => x.InvokeDerivedMappers<AST.Expression>().First());
-
             // Create expressions to capture the operator precedence
             var binopPrecedence = new string[][] {
                 new string[] { "*", "%" },             // lvl1
@@ -446,6 +443,9 @@ namespace SMEIL.Parser
                     x.FindSubMatch(0, 7).InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
+
+            // A simple expression is either a literal or a name
+            var simpleExpression = Mapper(Choice(literalExpression, nameExpression), x => x.InvokeDerivedMappers<AST.Expression>().First());
 
             var switchCase = Mapper(
                 Composite(
