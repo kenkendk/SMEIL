@@ -12,6 +12,34 @@ namespace Unittest.Adder
     {
         [TestMethod]
         [ExpectedException(typeof(ParserException))]
+        public void TestNameClash1()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/nameclash1.sme", 8, 35, "inbus");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestNameClash2()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/nameclash2.sme", 7, 17, "inbus");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestNameClash3()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/nameclash3.sme", 7, 17, "inbus");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestNameClash4()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/nameclash4.sme", 10, 11, "t1");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
         public void TestConstantError1()
         {
             RunWithPositionArgs("../../../smeil/error/symbol/constant_func_ref.sme", 9, 30, "y");
@@ -87,6 +115,13 @@ namespace Unittest.Adder
             RunWithPositionArgs("../../../smeil/error/type/type_truncation_implicit.sme", 8, 5, "outbus");
         }
 
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void SignalDirectionViolation()
+        {
+            RunWithPositionArgs("../../../smeil/error/busses/incorrect_signal_direction.sme", 32, 13, "downstream");
+        }
+
         protected void RunWithPositionArgs(string file, int line, int lineoffset, string text)
         {
             try
@@ -107,7 +142,7 @@ namespace Unittest.Adder
             catch(Exception ex)
             {
                 Debug.WriteLine($"Unexpected exception: {ex}");
-                throw ex;
+                throw;
             }
         }
     }

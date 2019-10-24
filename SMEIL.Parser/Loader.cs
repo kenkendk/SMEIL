@@ -117,7 +117,7 @@ namespace SMEIL.Parser
                         throw new ParserException($"Parsed {argtext} to {littype} but cannot interpret as {realtype} which is required for parameter {p.Name}", p);
                     
                     pmap[i] = new AST.ParameterMap(p.SourceToken, p.Name, literal);
-                    rootscope.SymbolTable.Add(p.Name.Name, literal);
+                    rootscope.TryAddSymbol(p.Name.Name, literal, p.Name);
                 }
                 else if (realtype.IsBus)
                 {
@@ -168,12 +168,12 @@ namespace SMEIL.Parser
                         throw new ParserException($"Cannot use a top-level bus with direction {p.Direction}", p);
 
                     pmap[i] = new AST.ParameterMap(p.SourceToken, p.Name, AST.EnumerationExtensions.AsExpression(p.Name));
-                    rootscope.SymbolTable.Add(p.Name.Name, newbus);
+                    rootscope.TryAddSymbol(p.Name.Name, newbus, p.Name);
                     
                     // Register signals
                     using(var sc = state.StartScope(newbus))
                         foreach (var s in newbus.Instances.OfType<Instance.Signal>())
-                            sc.SymbolTable.Add(s.Name, s);
+                            sc.TryAddSymbol(s.Name, s, s.Source);
                 }
                 else
                 {
@@ -256,7 +256,7 @@ namespace SMEIL.Parser
                 if (imp.SourceNames == null)
                 {
                     // Import the entire module as 
-                    scope.SymbolTable.Add(imp.LocalName.Name, state.Modules[p]);
+                    scope.TryAddSymbol(imp.LocalName.Name, state.Modules[p], imp.LocalName);
                 }
                 else
                 {

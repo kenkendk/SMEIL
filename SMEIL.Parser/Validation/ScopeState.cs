@@ -52,6 +52,30 @@ namespace SMEIL.Parser.Validation
         }
 
         /// <summary>
+        /// Tries to add a new symbol to the table and throws an exception pointing to the offending location
+        /// </summary>
+        /// <param name="name">The name of the item to add</param>
+        /// <param name="item">The item to add</param>
+        /// <param name="token">The token used in the error message</param>
+        public void TryAddSymbol(string name, object item, AST.ParsedItem token)
+        {
+            TryAddSymbol(name, item, token.SourceToken);
+        }
+
+        /// <summary>
+        /// Tries to add a new symbol to the table and throws an exception pointing to the offending location
+        /// </summary>
+        /// <param name="name">The name of the item to add</param>
+        /// <param name="item">The item to add</param>
+        /// <param name="token">The token used in the error message</param>
+        public void TryAddSymbol(string name, object item, ParseToken token)
+        {
+            if (SelfContainsSymbol(name))
+                throw new ParserException($"A symbol with the name {name} already exists in the current scope", token);
+            SymbolTable.Add(name, item);
+        }
+
+        /// <summary>
         /// Returns a value indicating if the local symbol table contains the given name
         /// </summary>
         /// <param name="name">The name to find</param>

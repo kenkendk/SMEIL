@@ -191,10 +191,11 @@ namespace SMEIL.Parser.Validation
                         throw new ParserException($"Cannot use {p.Expression.SourceToken} of type {intrinsic_itemtype.ToString()} as the argument for {sourceparam.Name.SourceToken} of type {intrinsic_parametertype}", p.Expression);
 
                     map[pos] = new Instance.MappedParameter(p, sourceparam, value, parametertype);
+                    var localname = map[pos].LocalName;
 
                     // Register the instance in the local symbol table to allow
                     // refering to the instance with the parameter name
-                    scope.SymbolTable.Add(map[pos].LocalName, value);
+                    scope.TryAddSymbol(localname, value, sourceparam.Name);
                     position++;
                 }
 

@@ -1,0 +1,16 @@
+type tdata: { val: i32; };
+
+function y(out n: tdata) {
+    n.val = 0;
+}
+
+// Illegal duplicate parameter name
+proc plusone(in inbus: tdata, out inbus: tdata)
+{
+    trace("Wrote value {}", inbus.val);
+    outbus.val = inbus.val;
+}
+
+network plusone_net(in source: tdata, out dest: tdata) {    
+    instance plusone_inst of plusone(source, dest);
+}

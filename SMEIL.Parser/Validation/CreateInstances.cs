@@ -43,20 +43,20 @@ namespace SMEIL.Parser.Validation
                     if (decl is AST.ConstantDeclaration cdecl)
                     {
                         var cref = new Instance.ConstantReference(cdecl);
-                        scope.SymbolTable.Add(cref.Name, cref);
+                        scope.TryAddSymbol(cref.Name, cref, cdecl.Name);
                         parentCollection.Add(cref);
                     }
                     else if (decl is AST.EnumDeclaration edecl)
                     {
                         var e = new Instance.EnumTypeReference(edecl);
-                        scope.SymbolTable.Add(e.Name, e);
+                        scope.TryAddSymbol(e.Name, e, edecl.Name);
                         using (state.StartScope(e))
                             CreateAndRegisterInstance(state, e);
                         parentCollection.Add(e);
                     }
                     else if (decl is AST.FunctionDefinition fdecl)
                     {
-                        scope.SymbolTable.Add(fdecl.Name.Name, fdecl);
+                        scope.TryAddSymbol(fdecl.Name.Name, fdecl, fdecl.Name);
                     }
                 }
 
@@ -83,7 +83,7 @@ namespace SMEIL.Parser.Validation
             var netinstance = new Instance.Network(instDecl, network);
 
             // We have registered the network by this name already
-            //state.SymbolTable.Add(netinstance.Name, netinstance);
+            //state.TryAddSymbol(netinstance.Name, netinstance);
 
             using (state.StartScope(network, netinstance))
                 CreateAndRegisterInstances(state, netinstance.NetworkDefinition.Declarations, netinstance.Instances);
@@ -105,7 +105,7 @@ namespace SMEIL.Parser.Validation
                 if (decl is AST.BusDeclaration bus)
                 {
                     var b = new Instance.Bus(bus);
-                    scope.SymbolTable.Add(b.Name, b);
+                    scope.TryAddSymbol(b.Name, b, bus.Name);
                     using (state.StartScope(b))
                         CreateAndRegisterInstance(state, b);
                     parentCollection.Add(b);
@@ -113,7 +113,7 @@ namespace SMEIL.Parser.Validation
                 else if (decl is AST.ConstantDeclaration cdecl)
                 {
                     var cref = new Instance.ConstantReference(cdecl);
-                    scope.SymbolTable.Add(cref.Name, cref);
+                    scope.TryAddSymbol(cref.Name, cref, cdecl.Name);
                     parentCollection.Add(cref);
                     continue; 
                 }
@@ -139,7 +139,7 @@ namespace SMEIL.Parser.Validation
                     {
                         var p = new Instance.Process(instDecl, proc, Instance.ProcessType.Normal);
                         if (instDecl.Name.Name != null)
-                            scope.SymbolTable.Add(instDecl.Name.Name.Name, p);
+                            scope.TryAddSymbol(instDecl.Name.Name.Name, p, instDecl.Name.Name);
 
                         using(state.StartScope(p, instDecl))
                             CreateAndRegisterInstance(state, p);
@@ -185,7 +185,7 @@ namespace SMEIL.Parser.Validation
                 var l = new Instance.ForLoop(loop.Current);
                 using (var sc = state.StartScope(l)) {
                     // TODO: Should use the variable instance?
-                    sc.SymbolTable.Add(loop.Current.Variable.Name, l);
+                    sc.TryAddSymbol(loop.Current.Variable.Name, l, loop.Current.Variable.SourceToken);
                 }
                 parent.Instances.Add(l);
             }
@@ -223,7 +223,7 @@ namespace SMEIL.Parser.Validation
                 if (decl is EnumDeclaration en)
                 {
                     var e = new Instance.EnumTypeReference(en);
-                    scope.SymbolTable.Add(e.Name, e);
+                    scope.TryAddSymbol(e.Name, e, en.Name);
                     using (state.StartScope(e))
                         CreateAndRegisterInstance(state, e);
                     parentInstances.Add(e);
@@ -231,24 +231,24 @@ namespace SMEIL.Parser.Validation
                 }
                 else if (decl is FunctionDefinition fdef)
                 {
-                    scope.SymbolTable.Add(fdef.Name.Name, decl);
+                    scope.TryAddSymbol(fdef.Name.Name, decl, fdef.Name);
                 }
                 else if (decl is ConstantDeclaration cdecl)
                 {
                     var c = new Instance.ConstantReference(cdecl);
-                    scope.SymbolTable.Add(c.Name, c);
+                    scope.TryAddSymbol(c.Name, c, cdecl.Name);
                     parentInstances.Add(c);
                 }
                 else if (decl is VariableDeclaration variable)
                 {
                     var v = new Instance.Variable(variable);
-                    scope.SymbolTable.Add(v.Name, v);
+                    scope.TryAddSymbol(v.Name, v, variable.Name);
                     parentInstances.Add(v);
                 }
                 else if (decl is BusDeclaration bus)
                 {
                     var b = new Instance.Bus(bus);
-                    scope.SymbolTable.Add(b.Name, b);
+                    scope.TryAddSymbol(b.Name, b, bus.Name);
                     using (state.StartScope(b))
                         CreateAndRegisterInstance(state, b);
                     parentInstances.Add(b);
@@ -270,7 +270,7 @@ namespace SMEIL.Parser.Validation
             foreach (var signal in parent.Source.Signals)
             {
                 var s = new Instance.Signal(parent, signal);
-                scope.SymbolTable.Add(s.Name, s);
+                scope.TryAddSymbol(s.Name, s, signal.Name);
                 parent.Instances.Add(s);
             }
         }
@@ -294,7 +294,7 @@ namespace SMEIL.Parser.Validation
                 var s = new Instance.EnumFieldReference(parent, field, ix);
 
                 parent.Fields.Add(field.Name.Name, s);
-                scope.SymbolTable.Add(field.Name.Name, s);
+                scope.TryAddSymbol(field.Name.Name, s, field.Name);
                 parent.Instances.Add(s);
 
                 cur = ix + 1;
