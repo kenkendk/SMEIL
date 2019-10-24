@@ -51,5 +51,22 @@ namespace Unittest.Adder
             TestAdder_core("../../../smeil/simple/adder_extra_whitespace.sme");
         }
 
+        [TestMethod]
+        public void TestInternalNameReuse()
+        {
+            TestNameReuse("../../../smeil/simple/internal_name_reuse.sme");
+        }
+
+        public static void TestNameReuse(string path)
+        {
+            var state = Loader.LoadModuleAndImports(path, null, null);
+            state.Validate();
+
+            Assert.AreEqual(1, state.AllInstances.OfType<SMEIL.Parser.Instance.Network>().Count());
+            Assert.AreEqual(5, state.AllInstances.OfType<SMEIL.Parser.Instance.Process>().Count());
+
+            GenerateVHDLAndVerify(path);
+        }
+
     }
 }

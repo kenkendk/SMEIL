@@ -1,0 +1,38 @@
+type vdata: i32;
+type tdata: { val: vdata; };
+
+proc instr0()
+	bus a0 {
+		val: vdata = 0;
+	};
+
+	bus a1 {
+		val: vdata;
+	};
+
+{
+	a0.val = a1.val + a1.val;
+}
+
+proc instr1()
+	bus a2 {
+		val: vdata = 0;
+	};
+
+	bus a0 {
+		val: vdata;
+	};
+
+{
+	a2.val = a0.val + 2;
+}
+
+network bohrium(in a1: tdata, out a2: tdata){
+	instance 0_inst of instr0();
+	instance 1_inst of instr1();
+
+	connect
+		a1.val -> 0_inst.a1.val,
+		0_inst.a0.val -> 1_inst.a0.val,
+		1_inst.a2.val -> a2.val;
+}
