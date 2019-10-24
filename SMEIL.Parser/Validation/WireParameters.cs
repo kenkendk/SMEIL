@@ -76,14 +76,22 @@ namespace SMEIL.Parser.Validation
                 var scope = state.LocalScopes[sourceinstance];
 
                 // Map for getting the parameter index of a name
-                var nameindexmap = sourceinstance
+                var namelist = sourceinstance
                     .SourceParameters
                     .Zip(
                         Enumerable.Range(0, sourceinstance.SourceParameters.Length),
                         (p, i) => new { i, p.Name.Name }
-                    )
-                    .ToDictionary(x => x.Name, x => x.i);
+                    );
 
+                var collisions = namelist
+                    .GroupBy(x => x.Name)
+                    .Where(x => x.Count() != 1)
+                    .FirstOrDefault();
+
+                if (collisions != null)
+                    throw new ParserException($"Multiple arguments named {collisions.Key}, positions: {string.Join(", ", collisions.Select(x => x.i.ToString())) }", sourceinstance.SourceParameters[collisions.Last().i].Name);
+
+                var nameindexmap = namelist.ToDictionary(x => x.Name, x => x.i);
 
                 foreach (var p in sourceinstance.ParameterMap)
                 {
