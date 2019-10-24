@@ -644,7 +644,7 @@ namespace SMEIL.Parser.Validation
 
             if (decl is EnumDeclaration enumDecl)
             {
-                scope.SymbolTable.Add(enumDecl.Name.Name, decl);
+                scope.TryAddSymbol(enumDecl.Name.Name, decl, enumDecl.Name);
                 scope.TypedefinitionTable.Add(enumDecl.Name.Name, decl);
 
                 if (!LocalScopes.TryGetValue(decl, out var subscope))
@@ -652,15 +652,15 @@ namespace SMEIL.Parser.Validation
                     { /* Dispose immediately */}
 
                 foreach (var e in enumDecl.Fields)
-                    subscope.SymbolTable.Add(e.Name.Name, e);
+                    subscope.TryAddSymbol(e.Name.Name, e, e.Name);
             }
             else if (decl is FunctionDefinition func)
             {
-                scope.SymbolTable.Add(func.Name.Name, decl);
+                scope.TryAddSymbol(func.Name.Name, decl, func.Name);
             }
             else if (decl is BusDeclaration bus)
             {
-                scope.SymbolTable.Add(bus.Name.Name, decl);
+                scope.TryAddSymbol(bus.Name.Name, decl, bus.Name);
                 if (!LocalScopes.TryGetValue(decl, out var subscope))
                     using (subscope = StartScope(decl))
                     { /* Dispose immediately */}
@@ -681,7 +681,7 @@ namespace SMEIL.Parser.Validation
                 }
 
                 foreach (var signal in bus.Signals)
-                    subscope.SymbolTable.Add(signal.Name.Name, signal);
+                    subscope.TryAddSymbol(signal.Name.Name, signal, signal.Name);
             }
             else if (decl is VariableDeclaration variable)
             {
@@ -693,7 +693,7 @@ namespace SMEIL.Parser.Validation
             }
             else if (decl is InstanceDeclaration inst)
             {
-                scope.SymbolTable.Add(inst.Name.Name.Name, decl);
+                scope.TryAddSymbol(inst.Name.Name.Name, decl, inst.Name.Name);
             }
             else if (decl is ConnectDeclaration connDecl)
             {
@@ -724,16 +724,11 @@ namespace SMEIL.Parser.Validation
             {
                 if (ent is AST.Process process)
                 {
-                    scope.SymbolTable.Add(process.Name.Name, ent);
-
-                    foreach (var decl in process.Declarations)
-                        RegisterSymbols(decl, scope);
+                    scope.TryAddSymbol(process.Name.Name, ent, process.Name);
                 }
                 else if (ent is AST.Network network)
                 {
-                    scope.SymbolTable.Add(network.Name.Name, ent);
-                    foreach (var decl in network.Declarations)
-                        RegisterSymbols(decl, scope);
+                    scope.TryAddSymbol(network.Name.Name, ent, network.Name);
                 }
                 else 
                     throw new Exception($"Unexpected entity: {ent}");
