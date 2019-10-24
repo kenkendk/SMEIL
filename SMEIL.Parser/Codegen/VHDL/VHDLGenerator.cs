@@ -208,14 +208,14 @@ namespace SMEIL.Parser.Codegen.VHDL
                 .ToList();
 
             // Figure out which instances are from the same source declaration
-            var buscounters = AllBusses.GroupBy(x => x.Source).ToDictionary(x => x.Key, x => x.ToList());
+            var buscounters = AllBusses.GroupBy(x => x.Name).ToDictionary(x => x.Key, x => x.ToList());
 
             // Give the instances names, suffixed with the instance number if there are more than one
             BusNames = AllBusses
                 .Select(x => new
                 {
                     Key = x,
-                    Name = SanitizeVHDLName(x.Name + (buscounters[x.Source].Count == 1 ? "" : "_" + (buscounters[x.Source].IndexOf(x) + 1).ToString()))
+                    Name = SanitizeVHDLName(x.Name + (buscounters[x.Name].Count == 1 ? "" : "_" + (buscounters[x.Name].IndexOf(x) + 1).ToString()))
                 })
                 .ToDictionary(x => x.Key, x => x.Name);                
 
