@@ -2698,8 +2698,13 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>The sanitized name</returns>
         public static string SanitizeVHDLName(string name)
         {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException(nameof(name));
+
             var r = RX_ALPHANUMERIC.Replace(name, "_");
             if (VHDL_KEYWORDS.Contains(r.ToLowerInvariant()))
+                r = "vhdl_" + r;
+            if (char.IsDigit(r[0]) || r[0] == '_')
                 r = "vhdl_" + r;
 
             while (r.IndexOf("__", StringComparison.Ordinal) >= 0)
