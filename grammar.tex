@@ -71,6 +71,8 @@
   \alt `out' (output signal)
   \alt `const' (constant input value)  
 
+  <signal_direction> ::= `normal' \alt `inverse'
+
   <var-decl> ::= `var' <ident> `:' \\ <type-name> [ `=' <expression> ] [ <range> ] `;'
 
   <range> ::= `range' <expression> `to' <expression>
@@ -90,7 +92,7 @@
 
   <bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
 
-  <bus-signal-decl> ::= <ident> `:' <type-name> [ `=' <expression> ] [ <range> ] `;'
+  <bus-signal-decl> ::= <ident> `:' <type-name> [ `=' <expression> ] [ <range> ] [ `,' <signal_direction> ]`;'
 
   <connect-entry> ::= <name> '->' <name>
 
@@ -268,7 +270,9 @@
   \item import
   \item in
   \item instance
+  \item inverse
   \item network
+  \item normal
   \item of
   \item out
   \item proc
