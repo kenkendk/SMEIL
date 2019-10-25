@@ -1612,16 +1612,22 @@ namespace SMEIL.Parser.Codegen.VHDL
                             .OfType<Instance.Signal>()
                             .Select(x =>
                             {
-                                if(ValidationState.TopLevel.InputBusses.Contains(x.ParentBus))
+                                var isInput = ValidationState.TopLevel.InputBusses.Contains(x.ParentBus);
+                                if (x.Source.Direction == SignalDirection.Inverse)
+                                    isInput = !isInput;
+
+                                var conv = isInput ? conv_input : conv_output;
+
+                                if(isInput)
                                 {
                                     // Convert inputs
-                                    conv_input.TryGetValue(x.ResolvedType.Type, out var f);
+                                    conv.TryGetValue(x.ResolvedType.Type, out var f);
                                     return $"{RenderSignalName(exportnames[bus], x.Name)} <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)});";
                                 }
                                 else
                                 {
                                     // Convert outputs
-                                    conv_output.TryGetValue(x.ResolvedType.Type, out var f);
+                                    conv.TryGetValue(x.ResolvedType.Type, out var f);
                                     return $"{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)} <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus], x.Name)});";
                                 }
                             })
@@ -2166,19 +2172,19 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>The rendered bus definition</returns>
         public string RenderTopLevelBus(RenderState state, Instance.Bus bus, bool useExport = false)
         {
-            var direction = "out";
+            var directionOut = true;
             var text = "Top-level output";
 
             var prefix = string.Empty;
 
             if (ValidationState.TopLevel.InputBusses.Contains(bus))
             {
-                direction = "in";
+                directionOut = false;
                 text = "Top-level input";
             }
             else if (ValidationState.TopLevel.OutputBusses.Contains(bus))
             {
-                direction = "out";
+                directionOut = true;
                 text = "Top-level output";
             }
             else
@@ -2198,7 +2204,13 @@ namespace SMEIL.Parser.Codegen.VHDL
                     bus
                         .Instances
                         .OfType<Instance.Signal>()
-                        .Select(x => $"{RenderSignalName(prefix + BusNames[bus], x.Name)}: {direction} {(useExport ? RenderExportType(x.ResolvedType) : RenderNativeType(x.ResolvedType))};")
+                        .Select(x => {
+                            var d = directionOut;
+                            if (x.Source.Direction == SignalDirection.Inverse)
+                                d = !d;
+
+                            return $"{RenderSignalName(prefix + BusNames[bus], x.Name)}: {(d ? "out" : "in")} {(useExport ? RenderExportType(x.ResolvedType) : RenderNativeType(x.ResolvedType))};";
+                        })
                 );
 
             return decl + Environment.NewLine;

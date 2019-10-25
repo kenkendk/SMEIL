@@ -133,9 +133,10 @@ namespace SMEIL.Parser
                                     new AST.BusSignalDeclaration(
                                         dummyparsetoken, 
                                         new AST.Identifier(new ParseToken(0, 0, 0, x.Key)), 
-                                        x.Value,
+                                        x.Value.Type,
                                         null,
-                                        null
+                                        null,
+                                        x.Value.Direction
                                     )
                                 ).ToArray(),
                                 null

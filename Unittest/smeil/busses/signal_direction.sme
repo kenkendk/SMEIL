@@ -1,0 +1,36 @@
+type ext_proto: {
+    ready: bool, inverse;
+    valid: bool = false;
+    value: u32 = 4 * 10 + 2;
+};
+
+proc byteswap(in upstream: ext_proto, out downstream: ext_proto)
+    var value_ready : bool = false;
+{
+    if (value_ready)
+    {
+        // Reading output is alloved, due to inverse
+        if (downstream.ready)
+        {
+            downstream.valid = false;
+            value_ready = false;
+            upstream.ready = true;
+        }
+    }
+    else
+    {
+        if (upstream.valid)
+        {
+            downstream.value = upstream.value << 16 | upstream.value >> 16;
+            downstream.valid = true;
+            value_ready = downstream.ready;
+            
+            // Writing input is alloved, due to inverse
+            upstream.ready = downstream.ready;
+        }
+    }    
+}
+
+network main (in source: ext_proto, out target: ext_proto) {
+    instance _ of byteswap(source, target);    
+}

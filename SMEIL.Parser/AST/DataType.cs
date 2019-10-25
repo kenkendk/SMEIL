@@ -238,8 +238,14 @@ namespace SMEIL.Parser.AST
                     return false;
 
                 foreach (var n in this.Shape.Signals)
-                    if (!other.Shape.Signals.TryGetValue(n.Key, out var x) || !object.Equals(n.Value, x))
+                {
+                    if (!other.Shape.Signals.TryGetValue(n.Key, out var x))
                         return false;
+                    if (n.Value.Direction != x.Direction)
+                        return false;
+                    if (!object.Equals(n.Value.Type, x.Type))
+                        return false;
+                }
             }
             else if (this.Type == ILType.Enumeration)            
                 return this.EnumType == other.EnumType;

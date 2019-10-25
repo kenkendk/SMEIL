@@ -3,6 +3,21 @@ using System.Diagnostics;
 namespace SMEIL.Parser.AST
 {
     /// <summary>
+    /// The direction of a parameter
+    /// </summary>
+    public enum SignalDirection
+    {
+        /// <summary>
+        /// The signal follows the parameter direction
+        /// </summary>
+        Normal,
+        /// <summary>
+        /// The signal inverses the parameter direction
+        /// </summary>
+        Inverse,
+    }
+
+    /// <summary>
     /// Represents a signal declaration on a bus
     /// </summary>
     [DebuggerDisplay("BusSignalDeclaration = {Name}")]
@@ -24,6 +39,10 @@ namespace SMEIL.Parser.AST
         /// The indexed range, if any
         /// </summary>
         public readonly Range Range;
+        /// <summary>
+        /// The signal direction
+        /// </summary>
+        public readonly SignalDirection Direction;
 
         /// <summary>
         /// Creates a new bus signal declaration
@@ -33,13 +52,15 @@ namespace SMEIL.Parser.AST
         /// <param name="type">The signal type</param>
         /// <param name="initializer">The optional initializer</param>
         /// <param name="range">The optional range</param>
-        public BusSignalDeclaration(ParseToken source, Identifier name, TypeName type, Expression initializer, Range range)
+        /// <param name="range">The optional signal direction</param>
+        public BusSignalDeclaration(ParseToken source, Identifier name, TypeName type, Expression initializer, Range range, SignalDirection direction)
             : base(source)
         {
             Name = name;
             Type = type;
             Initializer = initializer;
             Range = range;
+            Direction = direction;
         }
     }
 }

@@ -314,13 +314,22 @@ namespace SMEIL.Parser.Validation
                             Bus = x.MappedItem
                         }
                     )
-                    .Where(x => x.Bus == scope)
+                    .Where(x => x.Bus == signalInstance.ParentBus)
                     .FirstOrDefault();
 
                 // Local bus is bi-directional and does not need checking
                 if (directionParam != null) 
                 {
                     var definedDirection = directionParam.Direction;
+
+                    // Flip the signal if it has inverse direction
+                    if (signalInstance.Source.Direction == SignalDirection.Inverse)
+                    {
+                        definedDirection = 
+                            definedDirection == ParameterDirection.In
+                            ? ParameterDirection.Out
+                            : ParameterDirection.In;
+                    }
 
                     if (definedDirection == ParameterDirection.Out && direction != ItemUsageDirection.Write)
                         throw new ParserException($"Can only write to output signal: {signalInstance.Name}", sourceExpr);
@@ -849,7 +858,7 @@ namespace SMEIL.Parser.Validation
             if (bus.ResolvedSignalTypes == null)
             {
                 var shape = this.ResolveSignalsToIntrinsic(bus.ResolvedType.Shape.Signals, scope);
-                bus.ResolvedSignalTypes = shape.ToDictionary(x => x.Key, x => x.Value.IntrinsicType);
+                bus.ResolvedSignalTypes = shape.ToDictionary(x => x.Key, x => x.Value.Type.IntrinsicType);
                 foreach (var s in bus.Instances.OfType<Instance.Signal>())
                     s.ResolvedType = bus.ResolvedSignalTypes[s.Name];
             }
@@ -864,12 +873,19 @@ namespace SMEIL.Parser.Validation
         /// <param name="signals"></param>
         /// <param name="scope"></param>
         /// <returns></returns>
-        public IDictionary<string, TypeName> ResolveSignalsToIntrinsic(IDictionary<string, TypeName> signals, ScopeState scope)
+        public IDictionary<string, BusShapeValue> ResolveSignalsToIntrinsic(IDictionary<string, BusShapeValue> signals, ScopeState scope)
         {
             return signals
-                .Select(x => new KeyValuePair<string, DataType>(x.Key, ResolveTypeName(x.Value, scope)))
-                .ToDictionary(x => x.Key, x => new AST.TypeName(x.Value, null));
-
+                .Select(x => 
+                    new KeyValuePair<string, BusShapeValue>(
+                        x.Key, 
+                        new BusShapeValue(
+                            new AST.TypeName(ResolveTypeName(x.Value.Type, scope), null), 
+                            x.Value.Direction
+                        )
+                    )
+                )
+                .ToDictionary(x => x.Key, x => x.Value);
         }
 
         /// <summary>

@@ -43,8 +43,9 @@ namespace SMEIL.Parser.AST
         private static readonly HashSet<string> _KEYWORDS = new HashSet<string>(new [] {
             "as", "async", "await", "barrier", "break", "bus", "case", "const", "connect",
             "clocked", "default", "elif", "else", "enum", "exposed", "for", "from", "function",
-            "generate", "if", "import", "in", "instance", "network", "of", "out", "proc",
-            "range", "return", "switch", "sync", "to", "unique", "var", "wait", "where",       
+            "generate", "if", "import", "in", "instance", "inverse", "network", "normal", "of", 
+            "out", "proc", "range", "return", "switch", "sync", "to", "unique", "var", "wait", 
+            "where"
         }, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>

@@ -778,6 +778,17 @@ namespace SMEIL.Parser
                 )
             );
 
+            var busSignalDirection = Mapper(
+                Choice(
+                    "normal",
+                    "inverse"
+                ),
+
+                x => string.Equals("inverse", x.Item.Text, StringComparison.OrdinalIgnoreCase)
+                    ? AST.SignalDirection.Inverse
+                    : AST.SignalDirection.Normal
+            );
+
             var busSignalDeclaration = Mapper(
                 Composite(
                     ident,
@@ -792,6 +803,12 @@ namespace SMEIL.Parser
                     Optional(
                         range
                     ),
+                    Optional(
+                        Composite(
+                            ",",
+                            busSignalDirection
+                        )
+                    ),
                     ";"
                 ),
 
@@ -800,7 +817,8 @@ namespace SMEIL.Parser
                     x.FirstMapper(ident),
                     x.FirstMapper(typename),
                     x.FindSubMatch(0, 3).FirstOrDefaultMapper(expression),
-                    x.FindSubMatch(0, 4).FirstOrDefaultMapper(range)
+                    x.FindSubMatch(0, 4).FirstOrDefaultMapper(range),
+                    x.FindSubMatch(0, 5).FirstOrDefaultMapper(busSignalDirection)
                 )
             );
 

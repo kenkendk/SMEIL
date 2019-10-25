@@ -39,7 +39,8 @@ namespace SMEIL.Parser.Validation
                             rhs_signal.Source.Name,
                             lhs_signal.Source.Type,
                             null,
-                            null
+                            null,
+                            AST.SignalDirection.Normal
                         )
                     },
                     Instance.ProcessType.Connect
