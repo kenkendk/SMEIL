@@ -619,6 +619,7 @@ namespace SMEIL.Parser.Validation
         public void Validate()
         {
             var modules = new IValidator[] {
+                new PopulateBusSignals(),
                 new VerifyIdentifiers(),
                 new CreateInstances(),
                 new VerifyConstantAssignments(),
@@ -664,21 +665,6 @@ namespace SMEIL.Parser.Validation
                 if (!LocalScopes.TryGetValue(decl, out var subscope))
                     using (subscope = StartScope(decl))
                     { /* Dispose immediately */}
-
-                // Resolve signals from the typename
-                if (bus.Signals == null)
-                {
-                    var signalsource = ResolveTypeName(bus.TypeName, scope);
-                    if (!signalsource.IsBus)
-                        throw new ParserException($"The typename {bus.TypeName.Alias} resolves to {signalsource.Type} but a bus type is required", bus.TypeName);
-                    bus.Signals = signalsource.Shape.Signals.Select(x => new AST.BusSignalDeclaration(
-                        bus.TypeName.SourceToken,
-                        new AST.Identifier(new ParseToken(0, 0, 0, x.Key)),
-                        x.Value,
-                        null,
-                        null
-                    )).ToArray();
-                }
 
                 foreach (var signal in bus.Signals)
                     subscope.TryAddSymbol(signal.Name.Name, signal, signal.Name);
