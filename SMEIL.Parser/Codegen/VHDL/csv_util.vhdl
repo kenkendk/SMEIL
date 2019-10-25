@@ -20,6 +20,9 @@ package csv_util is
     -- Debug print text
     procedure print(text: string);
 
+    -- converts string to BOOLEAN
+    function to_boolean(b: string) return BOOLEAN;
+
     -- converts string to STD_LOGIC
     function to_std_logic(b: string) return std_logic;
 
@@ -28,6 +31,9 @@ package csv_util is
 
     -- converts STD_LOGIC into a string
     function str(b: std_logic) return string;
+
+    -- converts BOOLEAN to string
+    function str(b: boolean) return string;
 
     -- converts STD_LOGIC_VECTOR into a string
     function str(b: std_logic_vector) return string;
@@ -182,10 +188,10 @@ package body csv_util is
     end to_std_logic_vector;
     
     -- converts string to STD_LOGIC
-   function to_std_logic(b: string) return std_logic is
-     variable s: std_logic;
-     begin
-          case b(1) is
+    function to_std_logic(b: string) return std_logic is
+        variable s: std_logic;
+    begin
+        case b(1) is
             when 'U' => s := 'U';
             when 'X' => s := 'X';
             when '0' => s := '0';
@@ -196,9 +202,20 @@ package body csv_util is
             when 'H' => s := 'H';
             when '-' => s := '-';
             when others => s := '-';
+        end case;
+        return s;
+    end to_std_logic;
+
+    -- converts string to BOOLEAN
+    function to_boolean(b: string) return boolean is
+        variable s: boolean;
+    begin
+          case b(1) is
+            when 'T'|'t'|'1' => s := true;
+            when others => s := false;
          end case;
          return s;
-    end to_std_logic;
+    end to_boolean;
     
     -- converts STD_LOGIC into a string
    function str(b: std_logic) return string is
@@ -251,6 +268,16 @@ package body csv_util is
     function str(b: signed) return string is
     begin
         return str(std_logic_vector(b));
+    end str;
+
+    -- converts BOOLEAN into a string
+    function str(b: boolean) return string is
+    begin
+        if b then
+            return "1";
+        else
+            return "0";
+        end if;
     end str;
 
  end package body csv_util;

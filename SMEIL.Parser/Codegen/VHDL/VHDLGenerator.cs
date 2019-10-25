@@ -867,6 +867,12 @@ namespace SMEIL.Parser.Codegen.VHDL
             {
                 decl += RenderLines(state,
                     "",
+                    "-- Testbench support function",
+                    "pure function TO_BOOLEAN(src: STD_LOGIC) return BOOLEAN is",
+                    "begin",
+                    "    return src = '1';",
+                    "end function TO_BOOLEAN;",
+                    "",
                     "signal CLOCK : Std_logic;",
                     "signal StopClock : BOOLEAN;",
                     "signal RESET : Std_logic;",
@@ -1048,9 +1054,9 @@ namespace SMEIL.Parser.Codegen.VHDL
                                     .SelectMany(x => new string[] {
                                         "read_csv_field(L, tmp);",
                                         "if are_strings_equal(tmp, \"U\") then",
-                                        $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)} <= {(x.ResolvedType.IsBoolean ? "'U'" : "(others => 'U')")};",
+                                        $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)} <= {(x.ResolvedType.IsBoolean ? "to_boolean('U')" : "(others => 'U')")};",
                                         "else",
-                                        $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)} <= {(x.ResolvedType.IsBoolean ? "to_std_logic(truncate(tmp))" : FromStdLogicVectorConvertFunction(x.ResolvedType, "to_std_logic_vector(truncate(tmp))"))};",
+                                        $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)} <= {(x.ResolvedType.IsBoolean ? "to_boolean(truncate(tmp))" : FromStdLogicVectorConvertFunction(x.ResolvedType, "to_std_logic_vector(truncate(tmp))"))};",
                                         "end if;",
                                         "fieldno := fieldno + 1;"
                                     })
@@ -1589,14 +1595,14 @@ namespace SMEIL.Parser.Codegen.VHDL
                     var conv_input = new Dictionary<ILType, string> {
                         { ILType.SignedInteger, "SIGNED" },
                         { ILType.UnsignedInteger, "UNSIGNED" },
-                        { ILType.Bool, "TO_STD_LOGIC" },
+                        { ILType.Bool, "FROM_STD_LOGIC" },
                     };
 
                     // Conversion methods from internal type to exported type
                     var conv_output = new Dictionary<ILType, string> {
                         { ILType.SignedInteger, "STD_LOGIC_VECTOR" },
                         { ILType.UnsignedInteger, "STD_LOGIC_VECTOR" },
-                        { ILType.Bool, "FROM_STD_LOGIC" },
+                        { ILType.Bool, "TO_STD_LOGIC" },
                     };
 
                     // Forward type converted input/output signals
