@@ -42,8 +42,29 @@ namespace SMEIL.Parser.Validation
                 throw new ParserException($"Multiple writers found for signal {doublewrite.Name}: {Environment.NewLine} {dblnames}", doublewrite.Source);
             }
 
+            // Find all signals that are inputs
+            var inputSignals = state
+                .TopLevel
+                .InputBusses
+                .SelectMany(
+                    x => x.Instances
+                        .OfType<Instance.Signal>()
+                        .Where(y => y.Source.Direction == SignalDirection.Normal)
+                )
+                .Concat(
+                    state
+                        .TopLevel
+                        .OutputBusses
+                        .SelectMany(
+                            x => x.Instances
+                                .OfType<Instance.Signal>()
+                                .Where(y => y.Source.Direction == SignalDirection.Inverse)
+                        )
+                )
+                ;
+
             // Register all inputs as having no writers
-            foreach (var s in state.TopLevel.InputBusses.SelectMany(x => x.Instances.OfType<Instance.Signal>()))
+            foreach (var s in inputSignals)
                 writers.Add(s, new List<Instance.Process>());
 
             // Prepare a list of signals processed by all writers
@@ -132,10 +153,21 @@ namespace SMEIL.Parser.Validation
         public IEnumerable<Instance.Signal> InputSignals(ValidationState state, Instance.Process process)
         {
             return process.MappedParameters
-                .Where(x => x.MappedItem is Instance.Bus && x.MatchedParameter.Direction == AST.ParameterDirection.In)
-                .Select(x => x.MappedItem)
-                .Cast<Instance.Bus>()
-                .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                .Where(x => x.MappedItem is Instance.Bus)
+                .SelectMany(x =>
+                {
+                    var isIn = x.MatchedParameter.Direction == AST.ParameterDirection.In;
+                    var parentBus = x.MappedItem as Instance.Bus;
+
+                    return parentBus
+                        .Instances
+                        .OfType<Instance.Signal>()
+                        .Where(y =>
+                                y.Source.Direction == SignalDirection.Normal
+                                ? isIn
+                                : !isIn
+                        );
+                })
                 .Concat(
                     process.Instances
                         .OfType<Instance.Bus>()
@@ -157,10 +189,20 @@ namespace SMEIL.Parser.Validation
         public IEnumerable<Instance.Signal> OutputSignals(ValidationState state, Instance.Process process)
         {
             return process.MappedParameters
-                .Where(x => x.MappedItem is Instance.Bus && x.MatchedParameter.Direction == AST.ParameterDirection.Out)
-                .Select(x => x.MappedItem)
-                .Cast<Instance.Bus>()
-                .SelectMany(x => x.Instances.OfType<Instance.Signal>())
+                .Where(x => x.MappedItem is Instance.Bus)
+                .SelectMany(x => {
+                    var isOut = x.MatchedParameter.Direction == AST.ParameterDirection.Out;
+                    var parentBus = x.MappedItem as Instance.Bus;
+
+                    return parentBus
+                        .Instances
+                        .OfType<Instance.Signal>()
+                        .Where(y => 
+                                y.Source.Direction == SignalDirection.Normal
+                                ? isOut
+                                : !isOut
+                        );
+                })
                 .Concat(
                     process.Instances
                         .OfType<Instance.Bus>()
