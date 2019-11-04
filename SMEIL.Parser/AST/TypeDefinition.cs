@@ -54,9 +54,6 @@ namespace SMEIL.Parser.AST
 
             if (signals == null)
                 throw new ArgumentNullException(nameof(signals));
-            var exprSignal = signals.FirstOrDefault(x => x.Initializer != null);
-            if (exprSignal != null)
-                throw new ParserException("Bus type definitions cannot have initial values", exprSignal);
 
             Shape = new BusShape(source, signals);
         }        
