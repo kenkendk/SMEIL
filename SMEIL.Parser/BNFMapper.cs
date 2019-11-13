@@ -1029,6 +1029,7 @@ namespace SMEIL.Parser
 
             networkDecl.Token = Choice(
                 instDecl,
+                busDecl,
                 constDecl,
                 genDecl,
                 connectDecl
