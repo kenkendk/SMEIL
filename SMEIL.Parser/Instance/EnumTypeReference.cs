@@ -8,7 +8,7 @@ namespace SMEIL.Parser.Instance
     /// Reference to a an enum
     /// </summary>
     [DebuggerDisplay("Enum {Name}")]
-    public class EnumTypeReference : IInstance
+    public class EnumTypeReference : IInstance, IChildContainer
     {
         /// <summary>
         /// The name of the item, or null for anonymous instances
@@ -26,9 +26,9 @@ namespace SMEIL.Parser.Instance
         public readonly Dictionary<string, Instance.EnumFieldReference> Fields = new Dictionary<string, Instance.EnumFieldReference>();
 
         /// <summary>
-        /// The instances (signals) for this bus
+        /// The instances (fields) for this enum
         /// </summary>
-        public readonly List<Instance.IInstance> Instances = new List<IInstance>();
+        public List<Instance.IInstance> Instances { get; } = new List<IInstance>();
 
         /// <summary>
         /// Creates a new variable instnace

@@ -8,7 +8,7 @@ namespace SMEIL.Parser.Instance
     /// Represents an instantiated bus
     /// </summary>
     [DebuggerDisplay("Bus = {Name}")]
-    public class Bus : IInstance
+    public class Bus : IInstance, IChildContainer
     {
         /// <summary>
         /// The name of the item, or null for anonymous instances
@@ -33,7 +33,7 @@ namespace SMEIL.Parser.Instance
         /// <summary>
         /// The instances (signals) for this bus
         /// </summary>
-        public readonly List<Instance.IInstance> Instances = new List<IInstance>();
+        public List<Instance.IInstance> Instances { get; } = new List<IInstance>();
 
         /// <summary>
         /// Constructs a new instance of the bus
