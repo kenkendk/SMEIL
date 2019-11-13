@@ -56,6 +56,26 @@ namespace SMEIL.Parser.AST
         public BusShape(ParseToken source, IEnumerable<AST.BusSignalDeclaration> signals)
             : base(source)
         {
+            if (signals == null)
+                throw new ArgumentNullException(nameof(signals));
+
+            var duplicates = signals
+                .GroupBy(x => x.Name.Name)
+                .Where(x => x.Count() > 1)
+                .Select(x => x.ToList())
+                .FirstOrDefault();
+
+            if (duplicates != null)
+            {
+                // Fix the order to report the first instance
+                duplicates = 
+                    duplicates
+                    .OrderBy(x => x.SourceToken.CharOffset)
+                    .ToList();
+
+                throw new ParserException($"Multiple signals with the name \"{duplicates.First().Name.Name}\": {string.Join(", ", duplicates.Select(x => x.SourceToken.ToString()))}", duplicates.First());
+            }
+
             Signals = signals.ToDictionary(x => x.Name.Name, x => new BusShapeValue(x.Type, x.Direction));
             if (Signals.Count == 0)
                 throw new ParserException("Cannot have an empty set of signals in a bus shape", source);            
