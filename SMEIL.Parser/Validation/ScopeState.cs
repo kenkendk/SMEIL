@@ -70,6 +70,9 @@ namespace SMEIL.Parser.Validation
         /// <param name="token">The token used in the error message</param>
         public void TryAddSymbol(string name, object item, ParseToken token)
         {
+            if (string.Equals(name, "_"))
+                return;
+
             if (SelfContainsSymbol(name))
                 throw new ParserException($"A symbol with the name {name} already exists in the current scope", token);
             SymbolTable.Add(name, item);
@@ -82,6 +85,9 @@ namespace SMEIL.Parser.Validation
         /// <returns><c>true</c> if the symbol exists locally; <c>false</c> otherwise</returns>
         public bool SelfContainsSymbol(string name)
         {
+            if (string.Equals(name, "_"))
+                return false;
+
             return ((ChainedDictionary<string, object>)SymbolTable).SelfContainsKey(name);
         }
 
@@ -92,6 +98,9 @@ namespace SMEIL.Parser.Validation
         /// <returns><c>true</c> if the symbol exists locally; <c>false</c> otherwise</returns>
         public bool SelfContainsTypeDef(string name)
         {
+            if (string.Equals(name, "_"))
+                return false;
+
             return ((ChainedDictionary<string, object>)SymbolTable).SelfContainsKey(name);
         }
 
