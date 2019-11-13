@@ -25,6 +25,11 @@ namespace SMEIL.Parser.AST
         public readonly BusShape Shape;
 
         /// <summary>
+        /// A lookup table with initializers
+        /// </summary>
+        public readonly Dictionary<string, AST.Expression> Initializers;
+
+        /// <summary>
         /// Constructs a new type definition for an alias
         /// </summary>
         /// <param name="source">The source parse token</param>
@@ -56,6 +61,12 @@ namespace SMEIL.Parser.AST
                 throw new ArgumentNullException(nameof(signals));
 
             Shape = new BusShape(source, signals);
+            
+            Initializers = signals
+                .ToDictionary(
+                    x => x.Name.Name,
+                    x => x.Initializer
+                );
         }        
     }
 }
