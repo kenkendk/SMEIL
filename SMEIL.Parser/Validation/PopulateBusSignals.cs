@@ -23,13 +23,15 @@ namespace SMEIL.Parser.Validation
                 if (bus.Signals == null)
                 {
                     var signalsource = state.ResolveTypeName(bus.TypeName, scope);
+                    var signaldef = (AST.TypeDefinition)state.FindTypeDefinition(bus.TypeName.Alias, scope);
+
                     if (!signalsource.IsBus)
                         throw new ParserException($"The typename {bus.TypeName.Alias} resolves to {signalsource.Type} but a bus type is required", bus.TypeName);
                     bus.Signals = signalsource.Shape.Signals.Select(x => new AST.BusSignalDeclaration(
                         bus.TypeName.SourceToken,
                         new AST.Identifier(new ParseToken(0, 0, 0, x.Key)),
                         x.Value.Type,
-                        null,
+                        signaldef.Initializers[x.Key],
                         null,
                         x.Value.Direction
                     )).ToArray();

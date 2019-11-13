@@ -2034,6 +2034,22 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
+        /// Extracts the constant value from a constant, variable, or literal
+        /// </summary>
+        /// <returns></returns>
+        private static Expression ExtractConstantInitializerExpression(Instance.IInstance item)
+        {
+            if (item is Instance.ConstantReference cref)
+                return cref.Source.Expression;
+            else if (item is Instance.Variable variable)
+                return variable.Source.Initializer;
+            else if (item is Instance.Literal literal)
+                return new AST.LiteralExpression(literal.Source.SourceToken, literal.Source);
+
+            throw new ArgumentException($"Cannot extract the initializer from item of type {item.GetType()}");
+        }
+
+        /// <summary>
         /// Renders the instantiation of a process
         /// </summary>
         /// <param name="state">The render state</param>
@@ -2049,14 +2065,11 @@ namespace SMEIL.Parser.Codegen.VHDL
 
             var genparams = proc
                 .MappedParameters
-                .Where(x => x.MappedItem is Instance.ConstantReference || x.MappedItem is Instance.Variable)
+                .Where(x => x.MappedItem is Instance.ConstantReference || x.MappedItem is Instance.Variable || x.MappedItem is Instance.Literal)
                 .Select(x => new
                 {
                     Name = x.LocalName,
-                    Item =
-                        x.MappedItem is Instance.ConstantReference
-                        ? (x.MappedItem as Instance.ConstantReference).Source.Expression
-                        : (x.MappedItem as Instance.Variable).Source.Initializer
+                    Item = ExtractConstantInitializerExpression(x.MappedItem)
                 })
                 .Select(x => $"{SanitizeVHDLName(x.Name)} => {RenderExpression(state, x.Item)};")
                 .ToArray();
@@ -2217,6 +2230,23 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
+        /// Extracts the ResolvedType value from the item
+        /// </summary>
+        /// <param name="item"></param>
+        /// <returns></returns>
+        private static AST.DataType GetResolvedType(Instance.IInstance item)
+        {
+            if (item is Instance.ConstantReference cref)
+                return cref.ResolvedType;
+            else if (item is Instance.Variable variable)
+                return variable.ResolvedType;
+            else if (item is Instance.Literal lit)
+                return new AST.DataType(lit.Source.SourceToken, lit.Source.Type, -1);
+            
+            throw new ArgumentException($"Cannot get resolved type for item of type: {item.GetType()}");
+        }
+
+        /// <summary>
         /// Returns a VHDL representation of a process
         /// </summary>
         /// <param name="state">The render stater</param>
@@ -2234,17 +2264,16 @@ namespace SMEIL.Parser.Codegen.VHDL
                 {
                     var genparams = process
                         .MappedParameters
-                        .Where(x => x.MappedItem is Instance.ConstantReference || x.MappedItem is Instance.Variable)
+                        .Where(x => x.MappedItem is Instance.ConstantReference || x.MappedItem is Instance.Variable || x.MappedItem is Instance.Literal)
                         .Select(x => new
                         {
                             Name = x.LocalName,
-                            DataType =
-                                x.MappedItem is Instance.ConstantReference
-                                ? (x.MappedItem as Instance.ConstantReference).ResolvedType
-                                : (x.MappedItem as Instance.Variable).ResolvedType
+                            DataType = GetResolvedType(x.MappedItem)
                         })
                         .Select(x => $"{SanitizeVHDLName(x.Name)}: {RenderNativeType(x.DataType)};")
                         .ToArray();
+
+                    
 
                     if (genparams.Length != 0)
                     {
@@ -2418,7 +2447,7 @@ namespace SMEIL.Parser.Codegen.VHDL
 
                                 variables.Select(x => {
                                     var resetvalue = DefaultValue(state, x);
-                                    var expr = TypeCast(state, resetvalue.Item2, x.ResolvedType);
+                                    var expr = TypeCast(state, resetvalue.Item2, resetvalue.Item1, x.ResolvedType);
                                     process.AssignedTypes[expr] = x.ResolvedType;
                                     process.AssignedTypes[resetvalue.Item2] = resetvalue.Item1;
 
@@ -2453,8 +2482,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                                 state,
 
                                 signals.Select(x => {
-                                    var resetvalue = DefaultValue(x.Signal);
-                                    var expr = TypeCast(state, resetvalue.Item2, x.Signal.ResolvedType);
+                                    var resetvalue = DefaultValue(state, x.Signal);
+                                    var expr = TypeCast(state, resetvalue.Item2, resetvalue.Item1, x.Signal.ResolvedType);
                                     process.AssignedTypes[expr] = x.Signal.ResolvedType;
                                     process.AssignedTypes[resetvalue.Item2] = resetvalue.Item1;
 
@@ -2529,46 +2558,16 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// Injects a typecast if the source type is another type than the target
         /// </summary>
         /// <param name="expression">The expression to cast</param>
+        /// <param name="expressionType">The expression type</param>
         /// <param name="targettype">The destination type</param>
         /// <param name="state">The render state</param>
         /// <returns>An expression that could be a type cast</returns>
-        public AST.Expression TypeCast(RenderState state, AST.Expression expression, DataType targettype)
+        public AST.Expression TypeCast(RenderState state, AST.Expression expression, DataType expressionType, DataType targettype)
         {
-            if (expression is LiteralExpression literalExpression) 
-            {
-                if (literalExpression.Value is AST.BooleanConstant && targettype.IsBoolean)
-                    return literalExpression;
-                else if (literalExpression.Value is AST.FloatingConstant && targettype.IsFloat)
-                    return literalExpression;
-                
-                if (literalExpression.Value is AST.IntegerConstant)
-                    return new AST.TypeCast(literalExpression, targettype, false);
-
-                throw new ParserException($"Unable to cast expression {literalExpression.Value} to {targettype}", expression);
-            }
-            else if (expression is NameExpression nameExpression)
-            {
-                var scope = GetLocalScope(state);
-                var symb = ValidationState.FindSymbol(nameExpression.Name, scope);
-                if (symb is Instance.ConstantReference con)
-                {
-                    var sourcetype = ValidationState.InstanceType(con);
-                    if (object.Equals(sourcetype, targettype))
-                        return expression;
-                }
-                else if (symb is Instance.EnumFieldReference enm)
-                {
-                    var sourcetype = new AST.DataType(enm.Source.SourceToken, enm.ParentType.Source);
-                    if (object.Equals(sourcetype, targettype))
-                        return expression;
-
-                    if (targettype.IsNumeric)
-                        return new AST.TypeCast(nameExpression, targettype, false);
-                    
-                }             
-            }
-
-            throw new ParserException($"Unable to cast expression {expression} to {targettype}", expression);
+            if (expressionType == targettype)
+                return expression;
+            else
+                return new AST.TypeCast(expression, targettype, false);
         }
 
         /// <summary>
@@ -2625,10 +2624,24 @@ namespace SMEIL.Parser.Codegen.VHDL
             if (decl.Initializer == null)
                 return DefaultValue(decl.SourceToken, variable.ResolvedType);
 
-            if (decl.Initializer is AST.LiteralExpression initExpr)
-                return new Tuple<DataType, Expression>(new DataType(decl.SourceToken, initExpr.Value.Type, -1), initExpr);
+            return DefaultValue(state, decl.SourceToken, decl.Initializer);                
+        }
 
-            if (decl.Initializer is AST.NameExpression nameExpr)
+        /// <summary>
+        /// Returns the default value and type for the variable
+        /// </summary>
+        /// <param name="state">The current state</param>
+        /// <param name="variable">The variable to get the default value from</param>
+        /// <returns>An expression that is the default value</returns>
+        private Tuple<AST.DataType, AST.Expression> DefaultValue(RenderState state, ParseToken sourceToken, AST.Expression initializer)
+        {
+            if (initializer == null)
+                throw new ArgumentNullException(nameof(initializer));
+
+            if (initializer is AST.LiteralExpression initExpr)
+                return new Tuple<DataType, Expression>(new DataType(sourceToken, initExpr.Value.Type, -1), initExpr);
+
+            if (initializer is AST.NameExpression nameExpr)
             {
                 var scope = GetLocalScope(state);
                 var symb = ValidationState.FindSymbol(nameExpr.Name, scope);
@@ -2646,11 +2659,11 @@ namespace SMEIL.Parser.Codegen.VHDL
                 else if (symb is Instance.EnumFieldReference enm)
                 {
                     return new Tuple<DataType, Expression>(
-                        new AST.DataType(decl.Initializer.SourceToken, enm.ParentType.Source),
+                        new AST.DataType(initializer.SourceToken, enm.ParentType.Source),
                         new AST.NameExpression(
-                            decl.Initializer.SourceToken,
+                            initializer.SourceToken,
                             new AST.Name(
-                                decl.Initializer.SourceToken,
+                                initializer.SourceToken,
                                 new Identifier[] {
                                     new AST.Identifier(new ParseToken(0, 0, 0, enm.ParentType.Name)),
                                     new AST.Identifier(new ParseToken(0, 0, 0, enm.Name)),
@@ -2662,7 +2675,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                 }
             }
 
-            throw new ParserException("Initial value for variable must be a literal", decl);
+            var assignedTypes = GetLocalAssignedTypes(state);
+            return new Tuple<DataType, Expression>(assignedTypes[initializer], initializer);
         }
 
         /// <summary>
@@ -2670,16 +2684,13 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// </summary>
         /// <param name="signal">The signal to get the default value from</param>
         /// <returns>A literal expression that is the default value</returns>
-        public Tuple<AST.DataType, AST.Expression> DefaultValue(Instance.Signal signal)
+        public Tuple<AST.DataType, AST.Expression> DefaultValue(RenderState state, Instance.Signal signal)
         {
             var decl = signal.Source;
             if (decl.Initializer == null)
                 return DefaultValue(decl.SourceToken, signal.ResolvedType);
 
-            if (decl.Initializer is AST.LiteralExpression initExpr)
-                return new Tuple<DataType, Expression>(new DataType(decl.SourceToken, initExpr.Value.Type, -1) , initExpr);
-
-            throw new ParserException("No initial value for variable", decl);
+            return DefaultValue(state, decl.SourceToken, decl.Initializer);
         }        
 
         /// <summary>

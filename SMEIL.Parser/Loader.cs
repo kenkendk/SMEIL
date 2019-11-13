@@ -121,6 +121,8 @@ namespace SMEIL.Parser
                 }
                 else if (realtype.IsBus)
                 {
+                    var typedef = (AST.TypeDefinition)state.FindTypeDefinition(p.ExplictType.Alias, rootscope);
+
                     // Create a new bus as a stand-in for the input or output
                     var newbus = new Instance.Bus(
                         new AST.BusDeclaration(
@@ -129,12 +131,12 @@ namespace SMEIL.Parser
                             realtype
                                 .Shape
                                 .Signals
-                                .Select(x => 
+                                .Select(x =>
                                     new AST.BusSignalDeclaration(
                                         dummyparsetoken, 
                                         new AST.Identifier(new ParseToken(0, 0, 0, x.Key)), 
                                         x.Value.Type,
-                                        null,
+                                        typedef.Initializers[x.Key],
                                         null,
                                         x.Value.Direction
                                     )

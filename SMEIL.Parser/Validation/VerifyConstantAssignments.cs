@@ -66,6 +66,17 @@ namespace SMEIL.Parser.Validation
                         CheckInitializer(state, parent, vdecl.Initializer, visited);
                     }
                 }
+                else if (item is AST.BusDeclaration bus)
+                {
+                    foreach (var signal in bus.Signals)
+                    {                    
+                        if (signal.Initializer != null)
+                        {
+                            var visited = new HashSet<AST.ConstantDeclaration>();
+                            CheckInitializer(state, parent, signal.Initializer, visited);
+                        }
+                    }
+                }
             }
         }
 
