@@ -40,6 +40,20 @@ namespace Unittest.Adder
 
         [TestMethod]
         [ExpectedException(typeof(ParserException))]
+        public void TestNameClash5()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/nameclash5.sme", 2, 15, "val");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
+        public void TestNameClash6()
+        {
+            RunWithPositionArgs("../../../smeil/error/symbol/nameclash6.sme", 6, 9, "v1");
+        }
+
+        [TestMethod]
+        [ExpectedException(typeof(ParserException))]
         public void TestConstantError1()
         {
             RunWithPositionArgs("../../../smeil/error/symbol/constant_func_ref.sme", 9, 30, "y");

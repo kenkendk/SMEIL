@@ -1,0 +1,16 @@
+// Double signal definition
+type tdata: { val: i32; val: i32; };
+
+function y(out n: tdata) {
+    n.val = 0;
+}
+
+proc plusone(in inbus: tdata, out outbus: tdata)
+{
+    trace("Wrote value {}", inbus.val);
+    outbus.val = inbus.val + 1;
+}
+
+network plusone_net(in source: tdata, out dest: tdata) {    
+    instance plusone_inst of plusone(source, dest);
+}
