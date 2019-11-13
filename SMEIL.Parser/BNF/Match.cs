@@ -83,10 +83,20 @@ namespace SMEIL.Parser.BNF
                         typeof(T).IsAssignableFrom(n.Token.GetType().GetGenericArguments().First())
                 )
                 .Select(
-                    n => (T)n.Token
-                        .GetType()
-                        .GetMethod(nameof(BNF.Mapper<T>.InvokeMatcher))
-                        .Invoke(n.Token, new object[] { n })
+                    n => {
+                        try
+                        {
+                            return (T)n.Token
+                            .GetType()
+                            .GetMethod(nameof(BNF.Mapper<T>.InvokeMatcher))
+                            .Invoke(n.Token, new object[] { n });
+                        }
+                        catch (System.Reflection.TargetInvocationException tex)
+                        {                           
+                            // As we use reflection, unwrap the exception here 
+                            throw tex.InnerException;
+                        }
+                    }
                 );
         }
 
