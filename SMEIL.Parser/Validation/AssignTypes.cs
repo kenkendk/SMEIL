@@ -23,14 +23,17 @@ namespace SMEIL.Parser.Validation
                 foreach (var f in networkInstance.Instances.OfType<Instance.FunctionInvocation>())
                     AssignProcessTypes(state, f, f.Statements, f.AssignedTypes);
 
+                // Handle network busses
+                AssignProcessTypes(state, networkInstance, new AST.Statement[0], networkInstance.AssignedTypes);
+
                 // Assign all types in all instantiated processes
                 foreach (var instance in networkInstance.Instances.OfType<Instance.Process>())
                 {
-                    AssignProcessTypes(state, instance, instance.Statements, instance.AssignedTypes); 
-
                     // Handle process-defined functions
                     foreach (var f in instance.Instances.OfType<Instance.FunctionInvocation>())
                         AssignProcessTypes(state, f, f.Statements, f.AssignedTypes);
+
+                    AssignProcessTypes(state, instance, instance.Statements, instance.AssignedTypes);
                 }
             }
         }
@@ -45,15 +48,67 @@ namespace SMEIL.Parser.Validation
             // Get the scope for the intance
             var scope = state.LocalScopes[parent];
 
+            // Extra expression that needs examining
+            var extras = new AST.Expression[0].AsEnumerable();
+
+            if (parent is Instance.IDeclarationContainer pdecl1)
+            {
+                extras = extras.Concat(
+                    pdecl1.Declarations
+                        // Functions are handled elsewhere and have their own scopes
+                        .Where(x => !(x is AST.FunctionDefinition))
+                        .SelectMany(
+                            x => x.All().OfType<AST.Expression>().Select(y => y.Current)
+                        )
+                );
+            }
+
+            if (parent is Instance.IParameterizedInstance pp) 
+            {
+                extras = extras.Concat(
+                    pp.MappedParameters
+                    .Select(x => x.MappedItem)
+                    .OfType<Instance.Bus>()
+                    .SelectMany(x => x.Instances
+                        .OfType<Instance.Signal>()
+                        .Select(y => y.Source.Initializer)
+                        .Where(y => y != null)
+                    )
+                );
+            }
+
+            if (parent is Instance.IChildContainer ck)
+            {
+                extras = extras.Concat(
+                    ck.Instances
+                    .OfType<Instance.Bus>()
+                    .SelectMany(x => x.Instances
+                        .OfType<Instance.Signal>()
+                        .Select(y => y.Source.Initializer)
+                        .Where(y => y != null)
+                    )
+                );
+            }
+
+            // List of statement expressions to examine for literal/constant type items
+            var allExpressions = statements
+                .All()
+                .OfType<AST.Expression>()
+                .Select(x => x.Current)
+                .Concat(extras)
+                .Concat(extras.SelectMany(x => x.All().OfType<AST.Expression>().Select(y => y.Current)))
+                .ToArray()
+                .AsEnumerable();
+
             // We use multiple iterations to assign types
             // The first iteration assigns types to all literal, bus, signal and variable expressions
-            foreach (var item in statements.All().OfType<AST.Expression>())
+            foreach (var item in allExpressions)
             {
                 // Skip duplicate assignments
-                if (assignedTypes.ContainsKey(item.Current))
+                if (assignedTypes.ContainsKey(item))
                     continue;
 
-                if (item.Current is AST.LiteralExpression literal)
+                if (item is AST.LiteralExpression literal)
                 {
                     if (literal.Value is AST.BooleanConstant)
                         assignedTypes[literal] = new AST.DataType(literal.SourceToken, ILType.Bool, 1);
@@ -62,22 +117,22 @@ namespace SMEIL.Parser.Validation
                     else if (literal.Value is AST.FloatingConstant)
                         assignedTypes[literal] = new AST.DataType(literal.SourceToken, ILType.Float, -1);
                 }
-                else if (item.Current is AST.NameExpression name)
+                else if (item is AST.NameExpression name)
                 {
                     var symbol = state.FindSymbol(name.Name, scope);
                     var dt = FindDataType(state, name, scope);
                     if (dt != null)
                     {
                         assignedTypes[name] = dt;
-                        state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Read, item.Current);
+                        state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Read, item);
                     }
                 }
             }
 
             // Handle variables not used in normal expressions
-            foreach (var item in statements.All())            
+            foreach (var item in statements.All().Select(x => x.Current))
             {
-                if (item.Current is AST.AssignmentStatement assignmentStatement)
+                if (item is AST.AssignmentStatement assignmentStatement)
                 {
                     var symbol = state.FindSymbol(assignmentStatement.Name, scope);
                     if (symbol is Instance.Variable var)
@@ -95,7 +150,7 @@ namespace SMEIL.Parser.Validation
                     else
                         throw new ParserException($"Can only assign to signal or variable, {assignmentStatement.Name.AsString} is {symbol.GetType().Name}", assignmentStatement.Name.SourceToken);
                 }
-                else if (item.Current is AST.ForStatement forStatement)
+                else if (item is AST.ForStatement forStatement)
                 {
                     var symbol = state.FindSymbol(forStatement.Variable, scope);
                     if (symbol is Instance.Variable var)
@@ -110,15 +165,22 @@ namespace SMEIL.Parser.Validation
                 }
             }
 
+            allExpressions = statements
+                .All(AST.TraverseOrder.DepthFirstPostOrder)
+                .OfType<AST.Expression>()
+                .Select(x => x.Current)
+                .Concat(extras.SelectMany(x => x.All(AST.TraverseOrder.DepthFirstPostOrder).OfType<AST.Expression>().Select(y => y.Current)))
+                .Concat(extras);
+
             // We are only concerned with expressions, working from leafs and up
             // At this point all literals, variables, signals, etc. should have a resolved type
-            foreach (var item in statements.All(AST.TraverseOrder.DepthFirstPostOrder).OfType<AST.Expression>())
+            foreach (var item in allExpressions)
             {
                 // Skip duplicate assignments
-                if (assignedTypes.ContainsKey(item.Current))
+                if (assignedTypes.ContainsKey(item))
                     continue;
 
-                if (item.Current is AST.UnaryExpression unaryExpression)
+                if (item is AST.UnaryExpression unaryExpression)
                 {
                     var sourceType = assignedTypes[unaryExpression.Expression];
 
@@ -145,9 +207,9 @@ namespace SMEIL.Parser.Validation
                     }
 
                     // Unary operations do not change the type
-                    assignedTypes[item.Current] = sourceType;
+                    assignedTypes[item] = sourceType;
                 }
-                else if (item.Current is AST.BinaryExpression binaryExpression)
+                else if (item is AST.BinaryExpression binaryExpression)
                 {
                     var leftType = assignedTypes[binaryExpression.Left];
                     var rightType = assignedTypes[binaryExpression.Right];
@@ -232,7 +294,7 @@ namespace SMEIL.Parser.Validation
                         }
                     }
                 }
-                else if (item.Current is AST.TypeCast typecastExpression)
+                else if (item is AST.TypeCast typecastExpression)
                 {
                     // Implicit typecasts are made by the parser so we do not validate those
                     if (!typecastExpression.Explicit)
@@ -247,17 +309,17 @@ namespace SMEIL.Parser.Validation
                     assignedTypes[typecastExpression] = targetType;
                 }
                 // Carry parenthesis expression types
-                else if (item.Current is AST.ParenthesizedExpression parenthesizedExpression)
+                else if (item is AST.ParenthesizedExpression parenthesizedExpression)
                 {
-                    assignedTypes[item.Current] = assignedTypes[parenthesizedExpression.Expression];
+                    assignedTypes[item] = assignedTypes[parenthesizedExpression.Expression];
                 }
 
             }
 
             // Then make sure we have assigned all targets
-            foreach (var item in statements.All().OfType<AST.Statement>())
+            foreach (var item in statements.All().OfType<AST.Statement>().Select(x => x.Current))
             {
-                if (item.Current is AST.AssignmentStatement assignmentStatement)
+                if (item is AST.AssignmentStatement assignmentStatement)
                 {
                     var symbol = state.FindSymbol(assignmentStatement.Name, scope);
                     var exprType = assignedTypes[assignmentStatement.Value];
@@ -268,10 +330,10 @@ namespace SMEIL.Parser.Validation
                     else if (symbol is Instance.Signal signalInstance)
                         targetType = state.ResolveTypeName(signalInstance.Source.Type, scope);
                     else
-                        throw new ParserException($"Assignment must be to a variable or a signal", item.Current);
+                        throw new ParserException($"Assignment must be to a variable or a signal", item);
 
                     if (!state.CanUnifyTypes(targetType, exprType, scope))
-                        throw new ParserException($"Cannot assign \"{assignmentStatement.Value}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item.Current);
+                        throw new ParserException($"Cannot assign \"{assignmentStatement.Value}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item);
                     //var unified = state.UnifiedType(targetType, exprType, scope);
 
                     // Force the right-hand side to be the type we are assigning to
@@ -279,12 +341,12 @@ namespace SMEIL.Parser.Validation
                     {
                         // Make sure we do not loose bits with implicit typecasting
                         if (exprType.BitWidth > targetType.BitWidth && targetType.BitWidth > 0)
-                            throw new ParserException($"Assignment would loose precision from {exprType.BitWidth} bits to {targetType.BitWidth}", item.Current);
+                            throw new ParserException($"Assignment would loose precision from {exprType.BitWidth} bits to {targetType.BitWidth}", item);
 
                         assignedTypes[assignmentStatement.Value = new AST.TypeCast(assignmentStatement.Value, targetType, false)] = targetType;
                     }
 
-                    state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Write, item.Current);
+                    state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Write, item);
                 }
             }
         }
