@@ -7,7 +7,7 @@ namespace SMEIL.Parser.Instance
     /// <summary>
     /// Represents an instantiated network
     /// </summary>
-    public class Network : IParameterizedInstance, IDeclarationContainer
+    public class Network : IParameterizedInstance, IDeclarationContainer, IChildContainer
     {
         /// <summary>
         /// The name of the item, or null for anonymous instances
@@ -62,7 +62,7 @@ namespace SMEIL.Parser.Instance
         /// <summary>
         /// The instances in this network
         /// </summary>
-        public readonly List<IInstance> Instances = new List<IInstance>();
+        public List<IInstance> Instances { get; } = new List<IInstance>();
 
         /// <summary>
         /// Constructs a new instance of the bus

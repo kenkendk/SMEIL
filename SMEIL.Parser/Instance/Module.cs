@@ -5,7 +5,7 @@ using System.Diagnostics;
 namespace SMEIL.Parser.Instance
 {
     [DebuggerDisplay("Module = {Name}")]
-    public class Module : IInstance, IDeclarationContainer
+    public class Module : IInstance, IDeclarationContainer, IChildContainer
     {
         /// <summary>
         /// The name of the module
@@ -25,7 +25,7 @@ namespace SMEIL.Parser.Instance
         /// <summary>
         /// The instances in this process
         /// </summary>
-        public readonly List<IInstance> Instances = new List<IInstance>();
+        public List<IInstance> Instances { get; } = new List<IInstance>();
 
         /// <summary>
         /// The process that this instance is from
