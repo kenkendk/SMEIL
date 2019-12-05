@@ -41,7 +41,11 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// An enumeration type
         /// </summary>
-        Enumeration
+        Enumeration,
+        /// <summary>
+        /// An array of another type
+        /// </summary>
+        Array,
     }
 
     /// <summary>
@@ -68,6 +72,16 @@ namespace SMEIL.Parser.AST
         /// The source enum type, if type is an enumeration
         /// </summary>
         public readonly AST.EnumDeclaration EnumType;
+
+        /// <summary>
+        /// The element type of this is an array type
+        /// </summary>
+        public readonly DataType ElementType;
+
+        /// <summary>
+        /// The expression used to define the array length, if this is an array type
+        /// </summary>
+        public readonly AST.Expression SourceConstExpression;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="T:SMEIL.Parser.AST.DataType"/> class.
@@ -106,6 +120,22 @@ namespace SMEIL.Parser.AST
             Type = ILType.Enumeration;
             BitWidth = -1;
             EnumType = parent ?? throw new ArgumentNullException(nameof(parent));
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="T:SMEIL.Parser.AST.DataType"/> class.
+        /// </summary>
+        /// <param name="token">The source token.</param>
+        /// <param name="width">The length of the array</param>
+        /// <param name="SourceConstExpression">The constant expression defining the length of the array</param>
+        /// <param name="elementType">The element type.</param>
+        public DataType(ParseToken token, int width, Expression sourceConstExpr, DataType elementType)
+            : base(token)
+        {
+            Type = ILType.Array;
+            BitWidth = width;
+            SourceConstExpression = sourceConstExpr;
+            ElementType = elementType ?? throw new ArgumentNullException(nameof(elementType));
         }
 
 
@@ -157,6 +187,11 @@ namespace SMEIL.Parser.AST
         /// Gets a value indicating if the item is an enumeration type
         /// </summary>
         public bool IsEnum => Type == ILType.Enumeration;
+
+        /// <summary>
+        /// Gets a value indicating if the item is an array type
+        /// </summary>
+        public bool IsArray => Type == ILType.Array;
 
         /// <summary>
         /// Helper method to parse a token for a data type
@@ -249,6 +284,8 @@ namespace SMEIL.Parser.AST
             }
             else if (this.Type == ILType.Enumeration)            
                 return this.EnumType == other.EnumType;
+            else if (this.Type == ILType.Array)
+                return this.ElementType == other.ElementType && this.BitWidth == other.BitWidth;
             else if (this.Type != ILType.Bool)
             {
                 if (other.BitWidth != this.BitWidth)
@@ -275,6 +312,8 @@ namespace SMEIL.Parser.AST
                 return this.Type.GetHashCode() ^ this.Shape.Signals.Count ^ (this.Shape.Signals.Count == 0 ? 0 : this.Shape.Signals.Select(x => x.GetHashCode()).Aggregate((a,b) => a ^ b));
             else if (this.Type == ILType.Enumeration)
                 return this.Type.GetHashCode() ^ this.EnumType.GetHashCode();
+            else if (this.Type == ILType.Array)
+                return this.ElementType.GetHashCode() ^ this.BitWidth;
             else
                 return this.Type.GetHashCode() ^ this.BitWidth;
         }
@@ -300,6 +339,8 @@ namespace SMEIL.Parser.AST
                     return "u" + BitWidth.ToString();
                 case ILType.Enumeration:
                     return "enum " + EnumType.Name.Name;
+                case ILType.Array:
+                    return $"{ElementType}[{BitWidth}]";
 
                 default:
                     return "???";

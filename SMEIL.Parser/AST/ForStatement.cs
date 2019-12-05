@@ -11,7 +11,7 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// The loop variable
         /// </summary>
-        public readonly Identifier Variable;
+        public readonly VariableDeclaration Variable;
 
         /// <summary>
         /// The expression for the loop start
@@ -37,6 +37,28 @@ namespace SMEIL.Parser.AST
         /// <param name="toExpression">The to expression</param>
         /// <param name="statements">The statements in the loop body</param>
         public ForStatement(ParseToken token, Identifier variable, Expression fromExpression, Expression toExpression, Statement[] statements)
+            : this(
+                token, 
+                new AST.VariableDeclaration(
+                    token, 
+                    variable, 
+                    new AST.TypeName(new AST.DataType(fromExpression.SourceToken, ILType.SignedInteger, -1), null), 
+                    fromExpression, 
+                    null
+                ), 
+                fromExpression, toExpression, statements)
+        {
+        }
+
+        /// <summary>
+        /// Constructs a new for statement
+        /// </summary>
+        /// <param name="token">The parse token</param>
+        /// <param name="variable">The loop variable</param>
+        /// <param name="fromExpression">The from expression</param>
+        /// <param name="toExpression">The to expression</param>
+        /// <param name="statements">The statements in the loop body</param>
+        public ForStatement(ParseToken token, VariableDeclaration variable, Expression fromExpression, Expression toExpression, Statement[] statements)
             : base(token)
         {
             Variable = variable ?? throw new ArgumentNullException(nameof(variable));

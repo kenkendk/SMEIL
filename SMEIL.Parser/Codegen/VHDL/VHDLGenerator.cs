@@ -74,6 +74,11 @@ namespace SMEIL.Parser.Codegen.VHDL
         public readonly List<AST.EnumDeclaration> AllEnums;
 
         /// <summary>
+        /// The list of all array types
+        /// </summary>
+        public readonly List<AST.DataType> AllArrayTypes;
+
+        /// <summary>
         /// The list of all busses
         /// </summary>
         public readonly List<Instance.Bus> AllBusses;
@@ -217,7 +222,20 @@ namespace SMEIL.Parser.Codegen.VHDL
                     Key = x,
                     Name = SanitizeVHDLName(x.Name + (buscounters[x.Name].Count == 1 ? "" : "_" + (buscounters[x.Name].IndexOf(x) + 1).ToString()))
                 })
-                .ToDictionary(x => x.Key, x => x.Name);                
+                .ToDictionary(x => x.Key, x => x.Name);
+
+
+            // Find all arrays referenced so we can create global types
+            AllArrayTypes = validationstate.AllInstances
+                .Where(x => !(x is Instance.Module || x is Instance.Network || x is Instance.Process || x is Instance.FunctionInvocation || x is Instance.ForLoop || x is Instance.EnumTypeReference))
+                .Select(x => validationstate.InstanceType(x))
+                .Distinct()
+                .Where(x => x.IsArray)
+                .ToList();
+
+            // Register global names for all the array types
+            foreach (var a in AllArrayTypes)
+                CreateUniqueGlobalName(a, a.ElementType.ToString() + "_array_" + a.BitWidth.ToString());
 
             // Extract all enums being referenced in the program
             AllEnums = validationstate
@@ -592,6 +610,19 @@ namespace SMEIL.Parser.Codegen.VHDL
                     );
                     decl += RenderLines(state,
                         ""
+                    );
+                }
+
+                if (AllArrayTypes.Any())
+                {
+                    decl += RenderLines(state, "-- Array definitions");
+                    decl += RenderLines(state,
+                        AllArrayTypes
+                            .Select(x => $"type {GlobalNames[x]} is array ({x.BitWidth - 1} downto 0) of {RenderNativeType(x.ElementType)};")
+                    );
+                    decl += RenderLines(state,
+                        AllArrayTypes
+                            .Select(x => $"type export_{GlobalNames[x]} is array ({x.BitWidth - 1} downto 0) of {RenderExportType(x.ElementType)};")
                     );
                 }
 
@@ -1010,11 +1041,14 @@ namespace SMEIL.Parser.Codegen.VHDL
                         decl += RenderLines(state,
                             AllBusses
                                 .SelectMany(x => x.Instances.OfType<Instance.Signal>())
-                                .SelectMany(x => new [] {
-                                    "read_csv_field(L, tmp);",
-                                    $"assert are_strings_equal(tmp, \"{x.ParentBus.Name}.{x.Name}\") report \"Field #\" & integer'image(fieldno) & \" is not correctly named: \" & truncate(tmp) & \", expected {x.ParentBus.Name}.{x.Name}\" severity Failure;",
-                                    "fieldno := fieldno + 1;"
-                                })
+                                .SelectMany(x => 
+                                    (x.ResolvedType.IsArray ? Enumerable.Range(0, x.ResolvedType.BitWidth) : new [] { -1 })
+                                        .SelectMany(y => new string[] {
+                                            "read_csv_field(L, tmp);",
+                                            $"assert are_strings_equal(tmp, \"{x.ParentBus.Name}.{x.Name}{(y == -1 ? string.Empty : $"({y})")}\") report \"Field #\" & integer'image(fieldno) & \" is not correctly named: \" & truncate(tmp) & \", expected {x.ParentBus.Name}.{x.Name}{(y == -1 ? string.Empty : $"({y})")}\" severity Failure;",
+                                            "fieldno := fieldno + 1;"
+                                        })
+                                )
                         );
 
                         decl += RenderLines(state,
@@ -1051,15 +1085,18 @@ namespace SMEIL.Parser.Codegen.VHDL
                                     AllBusses
                                     .Where(x => inputsmap.Contains(x))
                                     .SelectMany(x => x.Instances.OfType<Instance.Signal>())
-                                    .SelectMany(x => new string[] {
-                                        "read_csv_field(L, tmp);",
-                                        "if are_strings_equal(tmp, \"U\") then",
-                                        $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)} <= {(x.ResolvedType.IsBoolean ? "to_boolean('U')" : "(others => 'U')")};",
-                                        "else",
-                                        $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)} <= {(x.ResolvedType.IsBoolean ? "to_boolean(truncate(tmp))" : FromStdLogicVectorConvertFunction(x.ResolvedType, "to_std_logic_vector(truncate(tmp))"))};",
-                                        "end if;",
-                                        "fieldno := fieldno + 1;"
-                                    })
+                                    .SelectMany(x => 
+                                            (x.ResolvedType.IsArray ? Enumerable.Range(0, x.ResolvedType.BitWidth) : new [] { -1 })
+                                                .SelectMany(y => new string[] {
+                                                    "read_csv_field(L, tmp);",
+                                                    "if are_strings_equal(tmp, \"U\") then",
+                                                    $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")} <= {(x.ResolvedType.IsBoolean ? "to_boolean('U')" : "(others => 'U')")};",
+                                                    "else",
+                                                    $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")} <= {(x.ResolvedType.IsBoolean ? "to_boolean(truncate(tmp))" : FromStdLogicVectorConvertFunction(y == -1 ? x.ResolvedType : x.ResolvedType.ElementType, "to_std_logic_vector(truncate(tmp))"))};",
+                                                    "end if;",
+                                                    "fieldno := fieldno + 1;"
+                                            })
+                                    )
                             );
 
                             decl += RenderLines(state,
@@ -1080,16 +1117,19 @@ namespace SMEIL.Parser.Codegen.VHDL
                                 AllBusses
                                     .Where(x => !inputsmap.Contains(x))
                                     .SelectMany(x => x.Instances.OfType<Instance.Signal>())
-                                    .SelectMany(x => new string[] {
-                                        $"read_csv_field(L, tmp);",
-                                        $"if not are_strings_equal(tmp, \"U\") then",
-                                        $"    if not are_strings_equal(str({RenderSignalName(BusNames[x.ParentBus], x.Name)}), tmp) then",
-                                        $"        newfailures := newfailures + 1;",
-                                        $"        report \"Value for {RenderSignalName(BusNames[x.ParentBus], x.Name)} in cycle \" & integer'image(clockcycle) & \" was: \" & str({RenderSignalName(BusNames[x.ParentBus], x.Name)}) & \" but should have been: \" & truncate(tmp) severity Error;",
-                                        $"    end if;",
-                                        $"end if;",
-                                        $"fieldno := fieldno + 1;"
-                                    })
+                                    .SelectMany(x => 
+                                        (x.ResolvedType.IsArray ? Enumerable.Range(0, x.ResolvedType.BitWidth) : new [] { -1 })
+                                        .SelectMany(y => new string[] {
+                                            $"read_csv_field(L, tmp);",
+                                            $"if not are_strings_equal(tmp, \"U\") then",
+                                            $"    if not are_strings_equal(str({RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")}), tmp) then",
+                                            $"        newfailures := newfailures + 1;",
+                                            $"        report \"Value for {RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")} in cycle \" & integer'image(clockcycle) & \" was: \" & str({RenderSignalName(BusNames[x.ParentBus], x.Name)}) & \" but should have been: \" & truncate(tmp) severity Error;",
+                                            $"    end if;",
+                                            $"end if;",
+                                            $"fieldno := fieldno + 1;"
+                                        })
+                                    )
                             );
 
                             decl += RenderLines(state,
@@ -1483,7 +1523,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             // because the tools sometimes trip on other types
             var typeconvertedbusses =
                 toplevelbusses
-                .Where(x => x.ResolvedSignalTypes.Values.Any(y => y.IsNumeric))
+                .Where(x => x.ResolvedSignalTypes.Values.Any(y => y.IsNumeric || y.IsArray))
                 .ToArray();
 
             var exportnames = new Dictionary<Instance.Bus, string>(BusNames);
@@ -1568,7 +1608,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                         "    if src then",
                         "        return '1';",
                         "    else",
-                        "        return'0';",
+                        "        return '0';",
                         "    end if;",
                         "end function TO_STD_LOGIC;",
                         "",
@@ -1612,6 +1652,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                             .OfType<Instance.Signal>()
                             .Select(x =>
                             {
+                                // TODO: Array elements needs to be converted both for input and output
+
                                 var isInput = ValidationState.TopLevel.InputBusses.Contains(x.ParentBus);
                                 if (x.Source.Direction == SignalDirection.Inverse)
                                     isInput = !isInput;
@@ -1621,14 +1663,44 @@ namespace SMEIL.Parser.Codegen.VHDL
                                 if(isInput)
                                 {
                                     // Convert inputs
-                                    conv.TryGetValue(x.ResolvedType.Type, out var f);
-                                    return $"{RenderSignalName(exportnames[bus], x.Name)} <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)});";
+                                    if (x.ResolvedType.IsArray)
+                                    {
+                                        conv.TryGetValue(x.ResolvedType.ElementType.Type, out var f);
+                                        var previndent = state.Indent;
+                                        using(state.Indenter())
+                                            return $"{RenderSignalName(exportnames[bus], x.Name)} <= ({Environment.NewLine}{state.Indent}"
+                                                + string.Join($",{Environment.NewLine}{state.Indent}", 
+                                                    Enumerable.Range(0, x.ResolvedType.BitWidth)
+                                                        .Select(y => $"{(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)}({y}))")
+                                                )
+                                                + $"{Environment.NewLine}{previndent});";
+                                    }
+                                    else
+                                    {
+                                        conv.TryGetValue(x.ResolvedType.Type, out var f);
+                                        return $"{RenderSignalName(exportnames[bus], x.Name)} <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)});";
+                                    }
                                 }
                                 else
                                 {
-                                    // Convert outputs
-                                    conv.TryGetValue(x.ResolvedType.Type, out var f);
-                                    return $"{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)} <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus], x.Name)});";
+                                    if (x.ResolvedType.IsArray)
+                                    {
+                                        conv.TryGetValue(x.ResolvedType.ElementType.Type, out var f);
+                                        var previndent = state.Indent;
+                                        using (state.Indenter())
+                                            return $"{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)} <= ({Environment.NewLine}{state.Indent}"
+                                                + string.Join($",{Environment.NewLine}{state.Indent}",
+                                                    Enumerable.Range(0, x.ResolvedType.BitWidth)
+                                                        .Select(y => $"{(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus], x.Name)}({y}))")
+                                                )
+                                                + $"{Environment.NewLine}{previndent});";
+                                    }
+                                    else
+                                    {
+                                        // Convert outputs
+                                        conv.TryGetValue(x.ResolvedType.Type, out var f);
+                                        return $"{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)} <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus], x.Name)});";
+                                    }
                                 }
                             })
                         );
@@ -2442,22 +2514,29 @@ namespace SMEIL.Parser.Codegen.VHDL
                                     .OfType<Instance.Variable>();
 
                             // Emit reset statements for variables
-                            impl += RenderStatements(
+                            impl += RenderLines(
                                 state, 
 
                                 variables.Select(x => {
                                     var resetvalue = DefaultValue(state, x);
-                                    var expr = TypeCast(state, resetvalue.Item2, resetvalue.Item1, x.ResolvedType);
+                                    var expr = TypeCast(state, resetvalue.Item2, resetvalue.Item1, x.ResolvedType.IsArray ? x.ResolvedType.ElementType : x.ResolvedType);
                                     process.AssignedTypes[expr] = x.ResolvedType;
                                     process.AssignedTypes[resetvalue.Item2] = resetvalue.Item1;
 
-                                    return new AST.AssignmentStatement(
-                                        pdef.SourceToken, 
-                                        x.Source.Name.AsName(),
-                                        expr
-                                    );
-                                })
-                                .ToArray()
+                                    if (x.ResolvedType.IsArray)
+                                    {
+                                        return $"{RenderExpression(state, x.Source.Name.AsExpression())} := (others => {RenderExpression(state, expr)});";
+                                    }
+                                    else
+                                    {
+                                        return RenderStatement(state,
+                                            new AST.AssignmentStatement(
+                                                pdef.SourceToken, 
+                                                x.Source.Name.AsName(),
+                                                expr
+                                            )).TrimStart();
+                                    }
+                                })                                
                             );
 
                             // Emit reset statements for output signals
@@ -2478,29 +2557,38 @@ namespace SMEIL.Parser.Codegen.VHDL
                                 .Where(x => usages[x.Signal] != Validation.ItemUsageDirection.Read)
                                 .ToArray();
 
-                            impl += RenderStatements(
+                            impl += RenderLines(
                                 state,
 
                                 signals.Select(x => {
                                     var resetvalue = DefaultValue(state, x.Signal);
-                                    var expr = TypeCast(state, resetvalue.Item2, resetvalue.Item1, x.Signal.ResolvedType);
+                                    var expr = TypeCast(state, resetvalue.Item2, resetvalue.Item1, x.Signal.ResolvedType.IsArray ? x.Signal.ResolvedType.ElementType : x.Signal.ResolvedType);
                                     process.AssignedTypes[expr] = x.Signal.ResolvedType;
                                     process.AssignedTypes[resetvalue.Item2] = resetvalue.Item1;
 
-                                    return new AST.AssignmentStatement(
-                                        pdef.SourceToken,
-                                        new AST.Name(
-                                            x.Signal.Source.SourceToken,
-                                            new AST.Identifier[] {
-                                                new AST.Identifier(new ParseToken(0, 0, 0, x.Parameter.LocalName)),
-                                                x.Signal.Source.Name
-                                            },
-                                            null
-                                        ),
-                                        expr
-                                    );
+                                    if (x.Signal.ResolvedType.IsArray)
+                                    {
+                                        return $"{RenderExpression(state, x.Signal.Source.Name.AsExpression())} <= (others => {RenderExpression(state, expr)});";
+                                    }
+                                    else
+                                    {
+                                        return RenderStatement(
+                                            state,
+                                            new AST.AssignmentStatement(
+                                                pdef.SourceToken,
+                                                new AST.Name(
+                                                    x.Signal.Source.SourceToken,
+                                                    new AST.Identifier[] {
+                                                        new AST.Identifier(new ParseToken(0, 0, 0, x.Parameter.LocalName)),
+                                                        x.Signal.Source.Name
+                                                    },
+                                                    null
+                                                ),
+                                                expr
+                                            )
+                                        ).TrimStart();
+                                    }
                                 })
-                                .ToArray()
                             );
 
                             impl += RenderLines(state,
@@ -2608,6 +2696,9 @@ namespace SMEIL.Parser.Codegen.VHDL
                         }, 
                         null))
                 );
+
+            if (type.IsArray)
+                return DefaultValue(sourceToken, type.ElementType);
 
             throw new ParserException("No default value for type", type);
         }
@@ -2766,7 +2857,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     return null;
                 })
                 .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Concat(new [] { selfname })
+                .Append(selfname)
             );
         }
 
@@ -3068,8 +3159,11 @@ namespace SMEIL.Parser.Codegen.VHDL
             else
                 throw new ParserException("Unexpexted symbol type", assignStatement.Name);
 
+            var ix = string.Empty;
+            if (assignStatement.Name.Index?.LastOrDefault() != null) 
+                ix = $"({RenderExpression(state, assignStatement.Name.Index.Last().Index)})";
 
-            return $"{state.Indent}{ name } {( symbol is Instance.Signal ? "<=" : ":=" )} { RenderExpression(state, assignStatement.Value) };";
+            return $"{state.Indent}{ name }{ix} {( symbol is Instance.Signal ? "<=" : ":=" )} { RenderExpression(state, assignStatement.Value) };";
         }
 
         /// <summary>
@@ -3135,10 +3229,15 @@ namespace SMEIL.Parser.Codegen.VHDL
         public string RenderForStatement(RenderState state, AST.ForStatement forStatement)
         {
             var indent = state.Indent;
+            var parent = state.ActiveScopes.OfType<Instance.IChildContainer>().Last();
+            var inst = parent.Instances.OfType<Instance.ForLoop>().First(x => x.Source == forStatement);
+
             using (state.Indenter())
+            using (state.StartScope(inst))
                 return 
-                    $"{indent}for { RenderIdentifier(state, forStatement.Variable) } in { RenderExpression(state, forStatement.FromExpression) } to { RenderExpression(state, forStatement.ToExpression) } loop{Environment.NewLine}"
+                    $"{indent}for { RenderIdentifier(state, forStatement.Variable.Name) } in { RenderExpression(state, forStatement.FromExpression) } to { RenderExpression(state, forStatement.ToExpression) } loop{Environment.NewLine}"
                     + string.Join(Environment.NewLine, "")
+                    + RenderStatements(state, forStatement.Statements)
                     + $"{indent}end loop;";
         }
 
@@ -3356,9 +3455,9 @@ namespace SMEIL.Parser.Codegen.VHDL
                 case AST.BinOp.Modulo:
                     return "";
                 case AST.BinOp.Equal:
-                    return "==";
+                    return "=";
                 case AST.BinOp.NotEqual:
-                    return "!=";
+                    return "/=";
                 case AST.BinOp.ShiftLeft:
                     return "sll";
                 case AST.BinOp.ShiftRight:
@@ -3447,6 +3546,8 @@ namespace SMEIL.Parser.Codegen.VHDL
             else
                 throw new ParserException($"Unexpected symbol type {symbol?.GetType()}", name);
 
+            if (name.Index?.LastOrDefault() != null)
+                localname += $"({RenderExpression(state, name.Index.Last().Index)})";
 
             return localname;
         }
@@ -3562,6 +3663,8 @@ namespace SMEIL.Parser.Codegen.VHDL
                 throw new Exception("Cannot declare a bus type");
             else if (type.Type == AST.ILType.Enumeration)
                 return GlobalNames[type.EnumType];
+            else if (type.Type == AST.ILType.Array)
+                return GlobalNames[type];
 
             throw new Exception($"Unexpected type: {type}");
         }
@@ -3585,12 +3688,14 @@ namespace SMEIL.Parser.Codegen.VHDL
                 throw new Exception("Cannot declare a bus type");
             else if (type.Type == AST.ILType.Enumeration)
                 throw new Exception("Cannot export an enumeration type");
+            else if (type.Type == AST.ILType.Array)
+                return "export_" + GlobalNames[type];
 
             throw new Exception($"Unexpected type: {type}");
         }
 
         /// <summary>
-        /// Creats a comparable string that describes the argument types for a function
+        /// Creates a comparable string that describes the argument types for a function
         /// </summary>
         /// <param name="state">The current render state</param>
         /// <param name="f">The function invocation to use</param>

@@ -16,8 +16,11 @@ namespace SMEIL.Parser.Validation
         /// <param name="state">The validation state</param>
         public void Validate(ValidationState state)
         {
-            // Start the process with the top-level module
+            // Start the process with the top-level module,
+            // and capture the existing instances as well
+            var inst = state.TopLevel.ModuleInstance.Instances;
             state.TopLevel.ModuleInstance = CreateAndRegisterInstance(state, state.TopLevel.Module);
+            state.TopLevel.ModuleInstance.Instances.AddRange(inst);
         }
 
         /// <summary>
@@ -183,9 +186,9 @@ namespace SMEIL.Parser.Validation
             foreach (var loop in parent.Statements.All().OfType<AST.ForStatement>())
             {
                 var l = new Instance.ForLoop(loop.Current);
-                using (var sc = state.StartScope(l)) {
-                    // TODO: Should use the variable instance?
-                    sc.TryAddSymbol(loop.Current.Variable.Name, l, loop.Current.Variable.SourceToken);
+                using (var sc = state.StartScope(l, loop.Current)) {
+                    var varinst = new Instance.Variable(loop.Current.Variable);
+                    sc.TryAddSymbol(loop.Current.Variable.Name.Name, varinst, loop.Current.Variable.SourceToken);
                 }
                 parent.Instances.Add(l);
             }

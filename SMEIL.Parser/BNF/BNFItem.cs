@@ -211,7 +211,7 @@ namespace SMEIL.Parser.BNF
             if (bestshot.Token.MapperType != null)
                 throw new ParserException($"Failed to match \"{bestshot.Item.Text}\" expected: {bestshot.Token.MapperType.Name}", bestshot.Item);
 
-            var potentials = bestshot.SubMatches.Select(x => new BNFItem[] { x.Token }.Concat(x.Token.AllChildren).FirstOrDefault(y => y.MapperType != null)).Select(x => x.MapperType).ToArray();
+            var potentials = bestshot.SubMatches.Select(x => x.Token.AllChildren.Prepend(x.Token).FirstOrDefault(y => y.MapperType != null)).Select(x => x.MapperType).ToArray();
             if (bestshot.Token.MapperType != null)
                 potentials = new Type[] { bestshot.Token.MapperType };
 

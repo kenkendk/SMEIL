@@ -90,17 +90,32 @@ namespace SMEIL.Parser.Validation
         public ScopeState FindScopeForItem<T>(TypedVisitedItem<T> item)
             where T : AST.ParsedItem
         {
-            foreach (var n in new [] { item.Current }.Concat(item.Parents))
+            return TryFindScopeForItem(item) ?? throw new Exception("No symbol table found for item");
+        }
+
+        /// <summary>
+        /// Walks the parents of the item and gets the closest type scope
+        /// </summary>
+        /// <param name="item">The item to get the type scope for</param>
+        /// <returns>The type scope</returns>
+        public ScopeState TryFindScopeForItem<T>(TypedVisitedItem<T> item)
+            where T : AST.ParsedItem
+        {
+            // No need to attempt to find the scope for a literal
+            if (item.Current is AST.LiteralExpression)
+                return null;
+
+            foreach (var n in item.Parents.Prepend(item.Current))
             {
                 if (LocalScopes.TryGetValue(n, out var res))
                     return res;
 
                 if (n is Parser.Instance.IInstance pi && LocalScopes.TryGetValue(pi.Name, out res))
-                        return res;
+                    return res;
             }
 
-            throw new Exception("No symbol table found for item");
-        }
+            return null;
+        }        
 
         /// <summary>
         /// The list of loaded modules, where the key is the path
@@ -265,20 +280,8 @@ namespace SMEIL.Parser.Validation
                     yield return item;
 
                     // Add newly discovered instances
-                    if (item.Self is Instance.Module m)
-                        foreach (var n in m.Instances)
-                            work.Enqueue(new ParentVisitor(item, n));
-                    else if (item.Self is Instance.Network nw)
-                        foreach (var n in nw.Instances)
-                            work.Enqueue(new ParentVisitor(item, n));
-                    else if (item.Self is Instance.Process pr)
-                        foreach (var n in pr.Instances)
-                            work.Enqueue(new ParentVisitor(item, n));
-                    else if (item.Self is Instance.Bus bs)
-                        foreach (var n in bs.Instances)
-                            work.Enqueue(new ParentVisitor(item, n));
-                    else if (item.Self is Instance.FunctionInvocation func)
-                        foreach (var n in func.Instances)
+                    if (item.Self is Instance.IChildContainer c)
+                        foreach (var n in c.Instances)
                             work.Enqueue(new ParentVisitor(item, n));
                 }
             }
@@ -402,6 +405,10 @@ namespace SMEIL.Parser.Validation
                 // if (symbol is AST.ConstantDeclaration cdecl)
                 //     return new Instance.ConstantReference(cdecl);
 
+                // We need to be able to determine array lengths and others when creating the exports
+                if (scope == m_rootscope && symbol is AST.ConstantDeclaration cdecl)
+                    return new Instance.ConstantReference(cdecl);
+
                 throw new ParserException($"Got element of type {symbol.GetType().Name} but expected an instance", expression);
             }
             else if (expression is LiteralExpression literal)
@@ -499,7 +506,7 @@ namespace SMEIL.Parser.Validation
 
                 // We do not need a symbol table for the last item, but all others need a local symbol table
                 if (matched.Count != name.Identifier.Length && !LocalScopes.TryGetValue(res, out scope))
-                    throw new ParserException($"No symbol table for \"{id.Name}\" in item {string.Join(".", matched)}", id);
+                    throw new ParserException($"Cannot locate \"{name.Identifier[matched.Count]}\" in \"{id.Name}\", as it has no members. Found in item {string.Join(".", matched)}", id);
             }
 
             return res;
@@ -566,37 +573,131 @@ namespace SMEIL.Parser.Validation
         /// <returns>The datatype</returns>
         public DataType ResolveTypeName(AST.TypeName name, ScopeState scope)
         {
+            return ResolveTypeName(name, scope, new HashSet<AST.Name>(), name);
+        }
+
+        /// <summary>
+        /// Resolves a data type in the given scope
+        /// </summary>
+        /// <param name="name">The name to resolve</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns>The datatype</returns>
+        private DataType ResolveTypeName(AST.TypeName name, ScopeState scope, HashSet<AST.Name> visited, AST.TypeName orig)
+        {
+            if (name.IntrinsicType != null)
+                return name.IntrinsicType;
+
+            if (visited.Contains(name.Alias))
+                throw new ParserException($"Circular typedefinition detected", orig);
+
+            visited.Add(name.Alias);
+
+            var rs = FindTypeDefinition(name.Alias, scope);
+            if (rs == null)
+                throw new ParserException($"Failed to find type named: {name.Alias}", name);
+
+            if (rs is AST.TypeName nt)
+                return ResolveTypeName(nt, scope, visited, orig);
+            else if (rs is AST.DataType dt)
+            {
+                // Handle arrays
+                if (name.Indexer != null)
+                    return new AST.DataType(name.SourceToken, ResolveToInteger(name.Indexer, scope), name.Indexer, dt);
+
+                return dt;
+            }
+            else if (rs is AST.TypeDefinition td)
+            {
+                var res = td.Shape != null
+                    ? new DataType(td.SourceToken, td.Shape)
+                    :  ResolveTypeName(td.Alias, scope, visited, orig);
+
+                if (name.Indexer != null)
+                    res = new AST.DataType(name.SourceToken, ResolveToInteger(name.Indexer, scope), name.Indexer, res);
+
+                return res;
+
+            }
+            else if (rs is AST.EnumDeclaration ed)
+            {
+                var res = new DataType(ed.SourceToken, ed);
+                // Handle arrays
+                if (name.Indexer != null)
+                    return new AST.DataType(name.SourceToken, ResolveToInteger(name.Indexer, scope), name.Indexer, res);
+
+                return res;
+            }
+            else
+                throw new ParserException($"Resolved {name.Alias} to {rs}, expected a type", name);            
+        }
+
+        /// <summary>
+        /// Resolves a data type in the given scope
+        /// </summary>
+        /// <param name="name">The name to resolve</param>
+        /// <param name="scope">The scope to use</param>
+        /// <returns>The datatype</returns>
+        private DataType nnResolveTypeName(AST.TypeName name, ScopeState scope)
+        {
+            // TODO: Support array types, possibly by recursive lookup
+
             var visited = new HashSet<AST.Name>();
             var orig = name;
 
-            while(true)
+            while(!visited.Contains(name.Alias))
             {
                 if (name.IntrinsicType != null)
                     return name.IntrinsicType;
 
-                if (visited.Contains(name.Alias))
-                    throw new ParserException($"Circular typedefinition detected", orig);
                 visited.Add(name.Alias);
 
                 var rs = FindTypeDefinition(name.Alias, scope);
                 if (rs == null)
                     throw new ParserException($"Failed to find type named: {name.Alias}", name);
+
                 if (rs is AST.TypeName nt)                
                     name = nt;
                 else if (rs is AST.DataType dt)
+                {
+                    // Handle arrays
+                    if (name.Indexer != null)
+                        return new AST.DataType(name.SourceToken, ResolveToInteger(name.Indexer, scope), name.Indexer, dt);
+
                     return dt;
+                }
                 else if (rs is AST.TypeDefinition td)
                 {
                     if (td.Shape != null)
-                        return new DataType(td.SourceToken, td.Shape);
+                    {
+                        var res = new DataType(td.SourceToken, td.Shape);
+                        // Handle arrays
+                        if (name.Indexer != null)
+                            return new AST.DataType(name.SourceToken, ResolveToInteger(name.Indexer, scope), name.Indexer, res);
+
+                        return res;
+                    }
+
+                    if (name.Indexer != null)
+                    { 
+                        // Carry the array data type around
+                    }
 
                     name = td.Alias;
                 }
                 else if (rs is AST.EnumDeclaration ed)
-                    return new DataType(ed.SourceToken, ed);
+                {
+                    var res = new DataType(ed.SourceToken, ed);
+                    // Handle arrays
+                    if (name.Indexer != null)
+                        return new AST.DataType(name.SourceToken, ResolveToInteger(name.Indexer, scope), name.Indexer, res);
+
+                    return res;
+                }
                 else
                     throw new ParserException($"Resolved {name.Alias} to {rs}, expected a type", name);
             }
+
+            throw new ParserException($"Circular typedefinition detected", orig);
         }
 
         /// <summary>
@@ -711,6 +812,8 @@ namespace SMEIL.Parser.Validation
             {
                 if (decl is TypeDefinition tdef)
                     scope.TypedefinitionTable.Add(tdef.Name.Name, tdef);
+                else if (decl is ConstantDeclaration cdecl)
+                    scope.TryAddSymbol(cdecl.Name.Name, cdecl, cdecl.Name);
                 else
                     RegisterSymbols(decl, scope);
             }

@@ -46,7 +46,7 @@ namespace SMEIL.Parser.Validation
         private static void AssignProcessTypes(ValidationState state, Instance.IParameterizedInstance parent, AST.Statement[] statements, Dictionary<Expression, DataType> assignedTypes)
         {
             // Get the scope for the intance
-            var scope = state.LocalScopes[parent];
+            var defaultScope = state.LocalScopes[parent];
 
             // Extra expression that needs examining
             var extras = new AST.Expression[0].AsEnumerable();
@@ -94,16 +94,23 @@ namespace SMEIL.Parser.Validation
             var allExpressions = statements
                 .All()
                 .OfType<AST.Expression>()
-                .Select(x => x.Current)
-                .Concat(extras)
-                .Concat(extras.SelectMany(x => x.All().OfType<AST.Expression>().Select(y => y.Current)))
+                .Select(x => new { Item = x.Current, Scope = state.TryFindScopeForItem(x) ?? defaultScope })
+                .Concat(extras.Select(x => new { Item = x, Scope = defaultScope }))
+                .Concat(
+                    extras
+                        .SelectMany(x => x.All().OfType<AST.Expression>().Select(y => y.Current))
+                        .Select(x => new { Item = x, Scope = defaultScope })
+                )
                 .ToArray()
                 .AsEnumerable();
 
             // We use multiple iterations to assign types
             // The first iteration assigns types to all literal, bus, signal and variable expressions
-            foreach (var item in allExpressions)
+            foreach (var nn in allExpressions)
             {
+                var item = nn.Item;
+                var scope = nn.Scope;
+
                 // Skip duplicate assignments
                 if (assignedTypes.ContainsKey(item))
                     continue;
@@ -123,7 +130,11 @@ namespace SMEIL.Parser.Validation
                     var dt = FindDataType(state, name, scope);
                     if (dt != null)
                     {
-                        assignedTypes[name] = dt;
+                        if (name.Name.Index.LastOrDefault() != null && dt.IsArray)
+                            assignedTypes[name] = dt.ElementType;
+                        else
+                            assignedTypes[name] = dt;
+
                         state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Read, item);
                     }
                 }
@@ -132,6 +143,7 @@ namespace SMEIL.Parser.Validation
             // Handle variables not used in normal expressions
             foreach (var item in statements.All().Select(x => x.Current))
             {
+                var scope = defaultScope;
                 if (item is AST.AssignmentStatement assignmentStatement)
                 {
                     var symbol = state.FindSymbol(assignmentStatement.Name, scope);
@@ -152,7 +164,8 @@ namespace SMEIL.Parser.Validation
                 }
                 else if (item is AST.ForStatement forStatement)
                 {
-                    var symbol = state.FindSymbol(forStatement.Variable, scope);
+                    var forScope = state.LocalScopes[forStatement];
+                    var symbol = state.FindSymbol(forStatement.Variable.Name, forScope);
                     if (symbol is Instance.Variable var)
                     {
                         if (var.ResolvedType == null)
@@ -168,14 +181,21 @@ namespace SMEIL.Parser.Validation
             allExpressions = statements
                 .All(AST.TraverseOrder.DepthFirstPostOrder)
                 .OfType<AST.Expression>()
-                .Select(x => x.Current)
-                .Concat(extras.SelectMany(x => x.All(AST.TraverseOrder.DepthFirstPostOrder).OfType<AST.Expression>().Select(y => y.Current)))
-                .Concat(extras);
+                .Select(x => new { Item = x.Current, Scope = state.TryFindScopeForItem(x) ?? defaultScope })
+                .Concat(
+                    extras
+                        .SelectMany(x => x.All(AST.TraverseOrder.DepthFirstPostOrder).OfType<AST.Expression>().Select(y => y.Current))
+                        .Select(x => new { Item = x, Scope = defaultScope })                        
+                )
+                .Concat(extras.Select(x => new { Item = x, Scope = defaultScope }));
 
             // We are only concerned with expressions, working from leafs and up
             // At this point all literals, variables, signals, etc. should have a resolved type
-            foreach (var item in allExpressions)
+            foreach (var nn in allExpressions)
             {
+                var item = nn.Item;
+                var scope = nn.Scope;
+
                 // Skip duplicate assignments
                 if (assignedTypes.ContainsKey(item))
                     continue;
@@ -270,6 +290,7 @@ namespace SMEIL.Parser.Validation
                             case BinOp.Add:
                             case BinOp.Subtract:
                             case BinOp.Multiply:
+                            case BinOp.Divide:
                             case BinOp.Modulo:
                             case BinOp.BitwiseAnd:
                             case BinOp.BitwiseOr:
@@ -319,6 +340,7 @@ namespace SMEIL.Parser.Validation
             // Then make sure we have assigned all targets
             foreach (var item in statements.All().OfType<AST.Statement>().Select(x => x.Current))
             {
+                var scope = defaultScope;
                 if (item is AST.AssignmentStatement assignmentStatement)
                 {
                     var symbol = state.FindSymbol(assignmentStatement.Name, scope);
@@ -331,6 +353,9 @@ namespace SMEIL.Parser.Validation
                         targetType = state.ResolveTypeName(signalInstance.Source.Type, scope);
                     else
                         throw new ParserException($"Assignment must be to a variable or a signal", item);
+
+                    if (targetType.IsArray && assignmentStatement.Name.Index?.LastOrDefault() != null)
+                        targetType = targetType.ElementType;
 
                     if (!state.CanUnifyTypes(targetType, exprType, scope))
                         throw new ParserException($"Cannot assign \"{assignmentStatement.Value}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item);

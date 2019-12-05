@@ -177,6 +177,8 @@ namespace SMEIL.Parser
                     using(var sc = state.StartScope(newbus))
                         foreach (var s in newbus.Instances.OfType<Instance.Signal>())
                             sc.TryAddSymbol(s.Name, s, s.Source);
+
+                    state.TopLevel.ModuleInstance.Instances.Add(newbus);
                 }
                 else
                 {

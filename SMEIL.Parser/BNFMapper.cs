@@ -147,7 +147,9 @@ namespace SMEIL.Parser
                     "]"
                 ),
 
-                x => new AST.ArrayIndex(x.Item, x.FirstMapper(expression))
+                x => { 
+                    return new AST.ArrayIndex(x.Item, x.FirstMapper(expression)); 
+                }
             );
 
             var nameitem = Mapper(
@@ -158,26 +160,36 @@ namespace SMEIL.Parser
                     )
                 ),
 
-                x => new
-                {
-                    Name = x.FirstMapper(ident),
-                    Index = x.FirstOrDefaultMapper(arrayIndex)
+                x => {
+                    return new
+                    {
+                        Name = x.FirstMapper(ident),
+                        Index = x.FirstOrDefaultMapper(arrayIndex)
+                    };
                 }
+            );
+
+            var dotprefixedname = Mapper(
+                Composite(
+                    ".",
+                    nameitem
+                ),
+
+                x => x.FindSubMatch(0).InvokeFirstLevelMappers(nameitem).First()
             );
 
             var name = Mapper(
                 Composite(
                     nameitem,
-                    Sequence(
-                        Composite(
-                            ".",
-                            nameitem
-                        )
-                    )
+                    Sequence(dotprefixedname)
                 ),
 
                 x => {
-                    var entries = x.InvokeMappers(nameitem);
+                    var entries = new [] { 
+                        x.FindSubMatch(0).InvokeFirstLevelMappers(nameitem).First() 
+                    }.Concat(x.FindSubMatch(0, 1).InvokeFirstLevelMappers(dotprefixedname));
+
+
                     return new AST.Name(
                         x.Item,
                         entries.Select(y => y.Name).ToArray(),
@@ -197,10 +209,13 @@ namespace SMEIL.Parser
                     )
                 ),
 
-                x =>
-                    x.FindSubMatch(0, 1, 0)?.Token == simpletypename
+                x => {
+                    var subitem = x.FindSubMatch(0, 1, 0);
+
+                    return subitem?.Token == simpletypename
                         ? new AST.TypeName(new AST.DataType(x.Item, x.FirstMapper(simpletypename)), x.FirstOrDefaultMapper(expression))
-                        : new AST.TypeName(x.FirstMapper(name), x.FirstOrDefaultMapper(expression))
+                        : new AST.TypeName(subitem.FirstMapper(name), x.FirstOrDefaultMapper(expression));
+                }
             );            
 
             // Mapping expressions to parameters
@@ -275,7 +290,7 @@ namespace SMEIL.Parser
 
             // Create expressions to capture the operator precedence
             var binopPrecedence = new string[][] {
-                new string[] { "*", "%" },             // lvl1
+                new string[] { "*", "/", "%" },        // lvl1
                 new string[] { "-", "+" },             // lvl2
                 new string[] { "<<", ">>" },           // lvl3
                 new string[] { "<", ">", "<=", ">=" }, // lvl4
@@ -447,7 +462,7 @@ namespace SMEIL.Parser
 
                 x => new AST.ForStatement(
                     x.Item,
-                    x.FirstMapper(ident),
+                    x.FirstMapper(ident), 
                     x.FindSubMatch(0, 3).FirstMapper(expression),
                     x.FindSubMatch(0, 5).FirstMapper(expression),
                     x.FindSubMatch(0, 7).InvokeFirstLevelMappers(statement).ToArray()
@@ -498,7 +513,7 @@ namespace SMEIL.Parser
                     var cases = x.FindSubMatch(0, 3).InvokeFirstLevelMappers(switchCase);
 
                     if (defaultCase.Length > 0)
-                        cases = cases.Concat(new[] { new Tuple<AST.Expression, AST.Statement[]>(null, defaultCase) });
+                        cases = cases.Append(new Tuple<AST.Expression, AST.Statement[]>(null, defaultCase));
 
                     return new AST.SwitchStatement(
                         x.Item,
