@@ -1,7 +1,7 @@
 const datalen: int = 4;
 type tdata: i32;
 
-type tarr: [datalen]tdata;
+type tarr: tdata[datalen];
 type tinbus: { 
     val: tdata; 
     valid: bool;

@@ -200,17 +200,17 @@ namespace SMEIL.Parser
 
             var typename = Mapper(
                 Composite(
-                    Optional(
-                        Composite("[", expression, "]")
-                    ),
                     Choice(
                         simpletypename,
                         name
+                    ),
+                    Optional(
+                        Composite("[", expression, "]")
                     )
                 ),
 
                 x => {
-                    var subitem = x.FindSubMatch(0, 1, 0);
+                    var subitem = x.FindSubMatch(0, 0, 0);
 
                     return subitem?.Token == simpletypename
                         ? new AST.TypeName(new AST.DataType(x.Item, x.FirstMapper(simpletypename)), x.FirstOrDefaultMapper(expression))
