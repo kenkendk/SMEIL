@@ -43,8 +43,7 @@ namespace SMEIL.Parser.AST
                     token, 
                     variable, 
                     new AST.TypeName(new AST.DataType(fromExpression.SourceToken, ILType.SignedInteger, -1), null), 
-                    fromExpression, 
-                    null
+                    fromExpression
                 ), 
                 fromExpression, toExpression, statements)
         {

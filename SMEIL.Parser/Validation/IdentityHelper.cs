@@ -39,7 +39,6 @@ namespace SMEIL.Parser.Validation
                             rhs_signal.Source.Name,
                             lhs_signal.Source.Type,
                             null,
-                            null,
                             AST.SignalDirection.Normal
                         )
                     },
@@ -121,14 +120,12 @@ namespace SMEIL.Parser.Validation
                                 input.SourceToken,
                                 ParameterDirection.In,
                                 new Identifier(pt_in),
-                                0,
                                 null
                             ),
                             new AST.Parameter(
                                 output.SourceToken,
                                 ParameterDirection.Out,
                                 new Identifier(pt_out),
-                                0,
                                 null
                             )
                     },
@@ -219,14 +216,12 @@ namespace SMEIL.Parser.Validation
                                 input.SourceToken,
                                 ParameterDirection.In,
                                 new Identifier(pt_in),
-                                0,
                                 null
                             ),
                             new AST.Parameter(
                                 output.SourceToken,
                                 ParameterDirection.Out,
                                 new Identifier(pt_out),
-                                0,
                                 null
                             )
                     },

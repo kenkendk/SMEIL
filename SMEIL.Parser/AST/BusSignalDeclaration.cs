@@ -36,10 +36,6 @@ namespace SMEIL.Parser.AST
         /// </summary>
         public readonly Expression Initializer;
         /// <summary>
-        /// The indexed range, if any
-        /// </summary>
-        public readonly Range Range;
-        /// <summary>
         /// The signal direction
         /// </summary>
         public readonly SignalDirection Direction;
@@ -51,15 +47,13 @@ namespace SMEIL.Parser.AST
         /// <param name="name">The signal name</param>
         /// <param name="type">The signal type</param>
         /// <param name="initializer">The optional initializer</param>
-        /// <param name="range">The optional range</param>
-        /// <param name="range">The optional signal direction</param>
-        public BusSignalDeclaration(ParseToken source, Identifier name, TypeName type, Expression initializer, Range range, SignalDirection direction)
+        /// <param name="direction">The optional signal direction</param>
+        public BusSignalDeclaration(ParseToken source, Identifier name, TypeName type, Expression initializer, SignalDirection direction)
             : base(source)
         {
             Name = name;
             Type = type;
             Initializer = initializer;
-            Range = range;
             Direction = direction;
         }
     }

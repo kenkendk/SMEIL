@@ -34,10 +34,6 @@ namespace SMEIL.Parser.AST
         /// </summary>
         public readonly ParameterDirection Direction;
         /// <summary>
-        /// An optional index
-        /// </summary>
-        public readonly int Index;
-        /// <summary>
         /// The explicit type assigned, or null if using a dynamic type
         /// </summary>
         public readonly TypeName ExplictType;
@@ -50,12 +46,11 @@ namespace SMEIL.Parser.AST
         /// <param name="name">The parameter name.</param>
         /// <param name="index">The optional index</param>
         /// <param name="explicttype">The explict type, if any</param>
-        public Parameter(ParseToken token, ParameterDirection direction, Identifier name, int index, TypeName explicittype)
+        public Parameter(ParseToken token, ParameterDirection direction, Identifier name, TypeName explicittype)
             : base(token)
         {
             this.Name = name ?? throw new ArgumentNullException(nameof(name));
             this.Direction = direction;
-            this.Index = index;
             this.ExplictType = explicittype;
         }
     }

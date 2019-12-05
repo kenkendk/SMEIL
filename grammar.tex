@@ -65,7 +65,7 @@
   
   <params> ::= <param> \{ , <param> \}
 
-  <param> ::= [ `[' [ <integer> ] `]' ] <direction> <ident> [ `:' <type-name> ]
+  <param> ::= <direction> <ident> [ `:' <type-name> ]
 
   <direction> ::= `in' (input signal)
   \alt `out' (output signal)
@@ -73,9 +73,7 @@
 
   <signal_direction> ::= `normal' \alt `inverse'
 
-  <var-decl> ::= `var' <ident> `:' \\ <type-name> [ `=' <expression> ] [ <range> ] `;'
-
-  <range> ::= `range' <expression> `to' <expression>
+  <var-decl> ::= `var' <ident> `:' \\ <type-name> [ `=' <expression> ] `;'
 
   <enum-decl> ::= `enum' <ident> \\ `{' <enum-field> \{ `,' <enum-field>  \} `}' `;'
 
@@ -92,7 +90,7 @@
 
   <bus-signal-decls> ::= <bus-signal-decl> \{ <bus-signal-decl> \}
 
-  <bus-signal-decl> ::= <ident> `:' <type-name> [ `=' <expression> ] [ <range> ] [ `,' <signal_direction> ]`;'
+  <bus-signal-decl> ::= <ident> `:' <type-name> [ `=' <expression> ] [ `,' <signal_direction> ]`;'
 
   <connect-entry> ::= <name> '->' <name>
 
@@ -276,7 +274,6 @@
   \item of
   \item out
   \item proc
-  \item range
   \item return
   \item switch
   \item sync

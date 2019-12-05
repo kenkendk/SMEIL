@@ -44,8 +44,7 @@ namespace SMEIL.Parser.AST
             "as", "async", "await", "barrier", "break", "bus", "case", "const", "connect",
             "clocked", "default", "elif", "else", "enum", "exposed", "for", "from", "function",
             "generate", "if", "import", "in", "instance", "inverse", "network", "normal", "of", 
-            "out", "proc", "range", "return", "switch", "sync", "to", "unique", "var", "wait", 
-            "where"
+            "out", "proc", "return", "switch", "sync", "to", "unique", "var", "wait", "where"
         }, StringComparer.OrdinalIgnoreCase);
 
         /// <summary>

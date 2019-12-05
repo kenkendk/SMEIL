@@ -32,7 +32,6 @@ namespace SMEIL.Parser.Validation
                         new AST.Identifier(new ParseToken(0, 0, 0, x.Key)),
                         x.Value.Type,
                         signaldef.Initializers[x.Key],
-                        null,
                         x.Value.Direction
                     )).ToArray();
                 }

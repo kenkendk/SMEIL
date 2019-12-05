@@ -600,25 +600,6 @@ namespace SMEIL.Parser
                 functionStatement
             );
 
-            var range = Mapper(
-                Composite(
-                    "range",
-                    expression,
-                    "to",
-                    expression
-                ),
-
-                x => {
-                    var mappers = x.FindSubMatch(0).InvokeFirstLevelMappers(expression);
-
-                    return new AST.Range(
-                        x.Item, 
-                        mappers.First(), 
-                        mappers.Last()
-                    );
-                }
-            );
-
             var varDecl = Mapper(
                 Composite(
                     "var",
@@ -631,9 +612,6 @@ namespace SMEIL.Parser
                             expression
                         )
                     ),
-                    Optional(
-                        range
-                    ),
                     ";"
                 ),
 
@@ -641,8 +619,7 @@ namespace SMEIL.Parser
                     x.Item, 
                     x.FirstMapper(ident),
                     x.FirstMapper(typename),
-                    x.FirstOrDefaultMapper(expression),
-                    x.FirstOrDefaultMapper(range)
+                    x.FirstOrDefaultMapper(expression)
                 )
             );
 
@@ -669,7 +646,6 @@ namespace SMEIL.Parser
             // Note: we restrict index to 32bit, but specs say unlimited
             var parameter = Mapper(
                 Composite(
-                    Optional(Composite("[", int32literal, "]")),
                     direction,
                     ident,
                     Optional(
@@ -684,7 +660,6 @@ namespace SMEIL.Parser
                     x.Item,
                     x.FirstMapper(direction),
                     x.FirstMapper(ident),
-                    x.FirstOrDefaultMapper(int32literal),
                     x.FirstOrDefaultMapper(typename)
                 )
             );
@@ -812,9 +787,6 @@ namespace SMEIL.Parser
                         )
                     ),
                     Optional(
-                        range
-                    ),
-                    Optional(
                         Composite(
                             ",",
                             busSignalDirection
@@ -828,8 +800,7 @@ namespace SMEIL.Parser
                     x.FirstMapper(ident),
                     x.FirstMapper(typename),
                     x.FindSubMatch(0, 3).FirstOrDefaultMapper(expression),
-                    x.FindSubMatch(0, 4).FirstOrDefaultMapper(range),
-                    x.FindSubMatch(0, 5).FirstOrDefaultMapper(busSignalDirection)
+                    x.FindSubMatch(0, 4).FirstOrDefaultMapper(busSignalDirection)
                 )
             );
 

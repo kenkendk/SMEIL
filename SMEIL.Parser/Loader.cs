@@ -137,7 +137,6 @@ namespace SMEIL.Parser
                                         new AST.Identifier(new ParseToken(0, 0, 0, x.Key)), 
                                         x.Value.Type,
                                         typedef.Initializers[x.Key],
-                                        null,
                                         x.Value.Direction
                                     )
                                 ).ToArray(),

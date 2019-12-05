@@ -162,7 +162,6 @@ namespace SMEIL.Parser.Validation
                                 ),
                                 x.Value.Type,
                                 null,
-                                null,
                                 x.Value.Direction
                             ))
                             .ToArray();
