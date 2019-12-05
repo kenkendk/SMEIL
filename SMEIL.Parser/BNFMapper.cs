@@ -398,9 +398,7 @@ namespace SMEIL.Parser
             var elifBlock = Mapper(
                 Composite(
                     "elif",
-                    "(",
                     expression,
-                    ")",
                     "{",
                     Sequence(statement),
                     "}"
@@ -408,7 +406,7 @@ namespace SMEIL.Parser
                 
                 x => new Tuple<AST.Expression, AST.Statement[]>(
                     x.FirstMapper(expression),
-                    x.FindSubMatch(0, 5).InvokeFirstLevelMappers(statement).ToArray()
+                    x.FindSubMatch(0, 3).InvokeFirstLevelMappers(statement).ToArray()
                 )
             );
 
@@ -426,9 +424,7 @@ namespace SMEIL.Parser
             var ifStatement = Mapper(
                 Composite(
                     "if", 
-                    "(", 
                     expression, 
-                    ")", 
                     "{", 
                     Sequence(statement) , 
                     "}",
@@ -441,9 +437,9 @@ namespace SMEIL.Parser
                 x => new AST.IfStatement(
                     x.Item,
                     x.FirstMapper(expression),
-                    x.FindSubMatch(0, 5).InvokeFirstLevelMappers(statement).ToArray(),
-                    x.FindSubMatch(0, 7).InvokeFirstLevelMappers(elifBlock).ToArray(),
-                    x.FindSubMatch(0, 8).FirstOrDefaultMapper(elseBlock)
+                    x.FindSubMatch(0, 3).InvokeFirstLevelMappers(statement).ToArray(),
+                    x.FindSubMatch(0, 5).InvokeFirstLevelMappers(elifBlock).ToArray(),
+                    x.FindSubMatch(0, 6).InvokeFirstLevelMappers(elseBlock).FirstOrDefault()
                 )
             );
 

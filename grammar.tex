@@ -111,7 +111,7 @@
 
   <statement> ::= <name> `=' <expression> `;' (assignment)
   \alt <name> `(' <param-map> `)'`;' (function call) 
-  \alt `if' `(' <expression> `)' `{' \{ <statement> \} `}' \\ \{ <elif-block>
+  \alt `if' <expression> `{' \{ <statement> \} `}' \\ \{ <elif-block>
     \} [ <else-block> ]
   \alt `for' <ident> `=' <expression> `to' <expression> \\ `{' \{ <statement> \} `}'
   %\alt `while' <expression> `{' \{ <statement> \} `}'
@@ -124,7 +124,7 @@
 
   <switch-case> ::= `case' <simple-expression> `{' \{ <statement> \} `}'
 
-  <elif-block> ::= `elif `(' <expression> `)' `{' \{ <statement> \} `}'
+  <elif-block> ::= `elif <expression> `{' \{ <statement> \} `}'
 
   <else-block> ::= `else' `{' \{ <statement> \} `}'
 
