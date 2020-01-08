@@ -2,7 +2,7 @@ type tdata: { val: i32; };
 
 proc plusone(in inbus: tdata, out outbus: tdata)
     // Illegal double name
-    bus m {
+    bus m: {
         v1: i32;
         v1: i32;
     };

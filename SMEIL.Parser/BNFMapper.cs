@@ -808,6 +808,7 @@ namespace SMEIL.Parser
                 Composite(
                     "bus",
                     ident,
+                    ":",
                     Choice(
                         Composite(
                             "{",
@@ -822,13 +823,13 @@ namespace SMEIL.Parser
                 ),
 
                 x => {
-                    var usingTypeName = x.FindSubMatch(0, 2, 0).Token == typename;
+                    var usingTypeName = x.FindSubMatch(0, 3, 0).Token == typename;
                     
                     return new AST.BusDeclaration(
                         x.Item,
                         x.FirstMapper(ident),
-                        usingTypeName ? null : x.FindSubMatch(0, 2).InvokeMappers(busSignalDeclaration).ToArray(),
-                        usingTypeName ? x.FindSubMatch(0, 2).FirstOrDefaultMapper(typename) : null
+                        usingTypeName ? null : x.FindSubMatch(0, 3).InvokeMappers(busSignalDeclaration).ToArray(),
+                        usingTypeName ? x.FindSubMatch(0, 3).FirstOrDefaultMapper(typename) : null
                     );
                 }
             );

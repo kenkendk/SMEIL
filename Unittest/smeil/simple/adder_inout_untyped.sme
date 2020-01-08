@@ -1,11 +1,11 @@
 type tdata: { val: i32; };
 
 proc plusone()
-    bus plusout {
+    bus plusout: {
        val: i32 = 0;
     };
 
-    bus plusin {
+    bus plusin: {
         val: i32 = 0;
     };
 {

@@ -2,11 +2,11 @@ type vdata: i32;
 type tdata: { val: vdata; };
 
 proc instr0()
-	bus a0 {
+	bus a0: {
 		val: vdata = 0;
 	};
 
-	bus a1 {
+	bus a1: {
 		val: vdata;
 	};
 
@@ -15,11 +15,11 @@ proc instr0()
 }
 
 proc instr1()
-	bus a2 {
+	bus a2: {
 		val: vdata = 0;
 	};
 
-	bus a0 {
+	bus a0: {
 		val: vdata;
 	};
 

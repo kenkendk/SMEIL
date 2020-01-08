@@ -8,7 +8,7 @@ proc plusone(in inbus: tdata, const inc: int, out outbus: tdata)
 
 network plusone_net(in source: tdata, out dest: tdata) 
 {    
-    bus temp tdata;
+    bus temp: tdata;
 
     instance _ of plusone(source, 2, temp);
     instance _ of plusone(temp, 3, dest);

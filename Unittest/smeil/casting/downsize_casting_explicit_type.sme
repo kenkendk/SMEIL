@@ -3,7 +3,7 @@ type tdata1: { val: tdata1_val; };
 type tdata2: { val: i40; };
 
 proc cutoff(in inbus: tdata2)
-    bus outbus tdata1;
+    bus outbus: tdata1;
 {    
     trace("Wrote value {}", inbus.val);
     outbus.val = (tdata1_val)inbus.val;

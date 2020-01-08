@@ -2,7 +2,7 @@ type tdata1: { val: i31; };
 type tdata2: { val: i32; };
 
 proc plusone(in inbus)
-    bus plusout {
+    bus plusout: {
        val: i32 = 0;
     };
 {

@@ -14,7 +14,7 @@ type toutbus: {
 };
 
 proc fir(in inbus: tinbus)
-    bus firout {
+    bus firout: {
        val: i32 = 0;
        valid: bool = false;
     };

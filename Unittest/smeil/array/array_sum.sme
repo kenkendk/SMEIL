@@ -6,7 +6,7 @@ type tinbus: { vals: tdata[datalen]; };
 type toutbus: { val: tdata; };
 
 proc summation(in inbus: tinbus)
-    bus sumout {
+    bus sumout: {
        val: i32 = 0;
     };
     var sum: tdata = 0;
