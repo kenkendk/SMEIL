@@ -358,7 +358,7 @@ namespace SMEIL.Parser.Validation
                         targetType = targetType.ElementType;
 
                     if (!state.CanUnifyTypes(targetType, exprType, scope))
-                        throw new ParserException($"Cannot assign \"{assignmentStatement.Value}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item);
+                        throw new ParserException($"Cannot assign \"{assignmentStatement.Value.SourceToken.Text}\" (with type {exprType}) to {assignmentStatement.Name.SourceToken} (with type {targetType})", item);
                     //var unified = state.UnifiedType(targetType, exprType, scope);
 
                     // Force the right-hand side to be the type we are assigning to
