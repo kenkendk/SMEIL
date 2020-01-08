@@ -1,8 +1,0 @@
-proc a ()
-{
-    break;
-}
-
-network n () {
-    instance _ of a ();
-}
