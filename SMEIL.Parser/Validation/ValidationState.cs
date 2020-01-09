@@ -926,6 +926,15 @@ namespace SMEIL.Parser.Validation
                     if (b.Type == ILType.Enumeration && a.EnumType == b.EnumType)
                         return a;
                     break;
+
+                case ILType.Array:
+                    if (b.Type == ILType.Array && a.BitWidth == b.BitWidth)
+                    {
+                        var unf = TryGetUnifiedType(a.ElementType, b.ElementType, scope);
+                        if (unf != null)
+                            return new DataType(a.SourceToken, a.BitWidth, a.SourceConstExpression, unf);
+                    }
+                    break;
             }
 
             return null;
