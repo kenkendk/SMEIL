@@ -161,6 +161,16 @@ namespace Unittest.Adder
         /// <param name="source">The source file</param>
         public static void GenerateVHDLAndVerify(string source)
         {
+            GenerateVHDLAndVerify(source, TimeSpan.FromSeconds(30));
+        }
+
+        /// <summary>
+        /// Parses the program from source and creates the VHDL output for the program
+        /// </summary>
+        /// <param name="source">The source file</param>
+        /// <param name="timeout">The timeout to apply to the make process</param>
+        public static void GenerateVHDLAndVerify(string source, TimeSpan timeout)
+        {
             var outname = Path.GetFileNameWithoutExtension(source);
             var targetdir = Path.Combine("output", outname);
             var opts = new Program.Options()
@@ -185,7 +195,13 @@ namespace Unittest.Adder
             });
 
             p.WaitForExit((int)TimeSpan.FromSeconds(30).TotalMilliseconds);
-            if (!p.HasExited || p.ExitCode != 0)
+            if (!p.HasExited)
+            {
+                p.Kill();
+                throw new Exception($"Timeout from \"make\" in folder {Path.GetFullPath(vhdldir)} (ran for {timeout})");
+            }
+
+            if (p.ExitCode != 0)
                 throw new Exception($"Bad exit code from \"make\" in folder {Path.GetFullPath(vhdldir)}");
         }
     }
