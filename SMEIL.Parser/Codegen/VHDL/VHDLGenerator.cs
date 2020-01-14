@@ -603,9 +603,16 @@ namespace SMEIL.Parser.Codegen.VHDL
                         consts.Select(x => {
                             var scope = constScopes[x.Key];
                             var name = constNames[x.Key];
+                            var exp = x.Key.Expression;
+                            var asTypes = (scope.Parent as Instance.IExpressionContainer).AssignedTypes;
+                            var litType = asTypes[exp];
+                            var targetType = x.First().ResolvedType;
+
+                            if (!object.Equals(targetType, litType))
+                                asTypes[exp = new AST.TypeCast(exp, targetType, false)] = targetType;
                             
                             using(state.StartScope(scope.Parent))
-                                return $"constant {name}: {RenderNativeType(x.First().ResolvedType)} := {RenderExpression(state, x.Key.Expression)};";
+                                return $"constant {name}: {RenderNativeType(x.First().ResolvedType)} := {RenderExpression(state, exp)};";
                         })
                     );
                     decl += RenderLines(state,
@@ -2893,15 +2900,10 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <returns>The assigned types</returns>
         private Dictionary<AST.Expression, DataType> GetLocalAssignedTypes(RenderState state)
         {
-            var cur = state.ActiveScopes.Last(x => x is Instance.Network || x is Instance.Process || x is Instance.FunctionInvocation);
-            if (cur is Instance.Network network)
-                return network.AssignedTypes;
-            else if (cur is Instance.Process process)
-                return process.AssignedTypes;
-            else if (cur is Instance.FunctionInvocation func)
-                return func.AssignedTypes;
-            else
-                throw new InvalidOperationException("Returned something unexpected");
+            var cur = state.ActiveScopes.Last(x => x is Instance.IExpressionContainer);
+            if (cur is Instance.IExpressionContainer iexpContainer)
+                return iexpContainer.AssignedTypes;
+            throw new InvalidOperationException("Returned something unexpected");
         }
 
         /// <summary>
