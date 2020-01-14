@@ -1131,7 +1131,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                                             $"if not are_strings_equal(tmp, \"U\") then",
                                             $"    if not are_strings_equal(str({RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")}), tmp) then",
                                             $"        newfailures := newfailures + 1;",
-                                            $"        report \"Value for {RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")} in cycle \" & integer'image(clockcycle) & \" was: \" & str({RenderSignalName(BusNames[x.ParentBus], x.Name)}) & \" but should have been: \" & truncate(tmp) severity Error;",
+                                            $"        report \"Value for {RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")} in cycle \" & integer'image(clockcycle) & \" was: \" & str({RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")}) & \" but should have been: \" & truncate(tmp) severity Error;",
                                             $"    end if;",
                                             $"end if;",
                                             $"fieldno := fieldno + 1;"
