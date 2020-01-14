@@ -5,7 +5,7 @@ using System.Diagnostics;
 namespace SMEIL.Parser.Instance
 {
     [DebuggerDisplay("Module = {Name}")]
-    public class Module : IInstance, IDeclarationContainer, IChildContainer
+    public class Module : IInstance, IDeclarationContainer, IChildContainer, IExpressionContainer
     {
         /// <summary>
         /// The name of the module
@@ -31,6 +31,13 @@ namespace SMEIL.Parser.Instance
         /// The process that this instance is from
         /// </summary>
         public readonly AST.Module ModuleDefinition;
+
+        /// <summary>
+        /// The type lookup table to use for this instance
+        /// </summary>
+        /// <value></value>
+        public Dictionary<AST.Expression, AST.DataType> AssignedTypes { get; } = new Dictionary<AST.Expression, AST.DataType>();
+
 
         /// <summary>
         /// Constructs a new module instance

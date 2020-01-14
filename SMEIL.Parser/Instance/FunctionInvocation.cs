@@ -8,7 +8,7 @@ namespace SMEIL.Parser.Instance
     /// <summary>
     /// Invocation of a function
     /// </summary>
-    public class FunctionInvocation : IParameterizedInstance, IDeclarationContainer, IChildContainer
+    public class FunctionInvocation : IParameterizedInstance, IDeclarationContainer, IChildContainer, IExpressionContainer
     {
         /// <summary>
         /// The mapped values for the parameters

@@ -18,12 +18,6 @@ namespace SMEIL.Parser.Instance
         AST.Parameter[] SourceParameters { get; }
 
         /// <summary>
-        /// The type lookup table to use for this instance
-        /// </summary>
-        /// <value></value>
-        Dictionary<AST.Expression, AST.DataType> AssignedTypes { get; }
-
-        /// <summary>
         /// The name of the source item
         /// </summary>
         string SourceName { get; }

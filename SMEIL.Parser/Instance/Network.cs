@@ -7,7 +7,7 @@ namespace SMEIL.Parser.Instance
     /// <summary>
     /// Represents an instantiated network
     /// </summary>
-    public class Network : IParameterizedInstance, IDeclarationContainer, IChildContainer
+    public class Network : IParameterizedInstance, IDeclarationContainer, IChildContainer, IExpressionContainer
     {
         /// <summary>
         /// The name of the item, or null for anonymous instances
