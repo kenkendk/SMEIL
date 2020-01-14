@@ -16,24 +16,30 @@ namespace SMEIL.Parser.Validation
         /// <param name="state">The validation state</param>
         public void Validate(ValidationState state)
         {
-            // Traverse the state, starting with networks
-            foreach (var networkInstance in state.AllInstances.OfType<Instance.Network>())
+            // Start by evaluating the modules
+            foreach (var moduleInstance in state.AllInstances.OfType<Instance.Module>())
             {
-                // Handle top-level functions
-                foreach (var f in networkInstance.Instances.OfType<Instance.FunctionInvocation>())
-                    AssignProcessTypes(state, f, f.Statements, f.AssignedTypes);
+                AssignProcessTypes(state, moduleInstance, new Statement[0], moduleInstance.AssignedTypes);
 
-                // Handle network busses
-                AssignProcessTypes(state, networkInstance, new AST.Statement[0], networkInstance.AssignedTypes);
-
-                // Assign all types in all instantiated processes
-                foreach (var instance in networkInstance.Instances.OfType<Instance.Process>())
+                // Then traverse the state, starting with networks
+                foreach (var networkInstance in moduleInstance.Instances.OfType<Instance.Network>())
                 {
-                    // Handle process-defined functions
-                    foreach (var f in instance.Instances.OfType<Instance.FunctionInvocation>())
+                    // Handle top-level functions
+                    foreach (var f in networkInstance.Instances.OfType<Instance.FunctionInvocation>())
                         AssignProcessTypes(state, f, f.Statements, f.AssignedTypes);
 
-                    AssignProcessTypes(state, instance, instance.Statements, instance.AssignedTypes);
+                    // Handle network busses
+                    AssignProcessTypes(state, networkInstance, new AST.Statement[0], networkInstance.AssignedTypes);
+
+                    // Assign all types in all instantiated processes
+                    foreach (var instance in networkInstance.Instances.OfType<Instance.Process>())
+                    {
+                        // Handle process-defined functions
+                        foreach (var f in instance.Instances.OfType<Instance.FunctionInvocation>())
+                            AssignProcessTypes(state, f, f.Statements, f.AssignedTypes);
+
+                        AssignProcessTypes(state, instance, instance.Statements, instance.AssignedTypes);
+                    }
                 }
             }
         }
@@ -43,7 +49,7 @@ namespace SMEIL.Parser.Validation
         /// </summary>
         /// <param name="state">The validation state to use</param>
         /// <param name="instance">The process instance to use</param>
-        private static void AssignProcessTypes(ValidationState state, Instance.IParameterizedInstance parent, AST.Statement[] statements, Dictionary<Expression, DataType> assignedTypes)
+        private static void AssignProcessTypes(ValidationState state, Instance.IInstance parent, AST.Statement[] statements, Dictionary<Expression, DataType> assignedTypes)
         {
             // Get the scope for the intance
             var defaultScope = state.LocalScopes[parent];
@@ -135,7 +141,8 @@ namespace SMEIL.Parser.Validation
                         else
                             assignedTypes[name] = dt;
 
-                        state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Read, item);
+                        if (parent is Instance.IParameterizedInstance ip)
+                            state.RegisterItemUsageDirection(ip, symbol, ItemUsageDirection.Read, item);
                     }
                 }
             }
@@ -371,7 +378,8 @@ namespace SMEIL.Parser.Validation
                         assignedTypes[assignmentStatement.Value = new AST.TypeCast(assignmentStatement.Value, targetType, false)] = targetType;
                     }
 
-                    state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Write, item);
+                    if (parent is Instance.IParameterizedInstance ip)
+                        state.RegisterItemUsageDirection(ip, symbol, ItemUsageDirection.Write, item);
                 }
                 else if (item is AST.ForStatement forStatement)
                 {
