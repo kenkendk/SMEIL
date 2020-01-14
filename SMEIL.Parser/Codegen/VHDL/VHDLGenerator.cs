@@ -3071,6 +3071,32 @@ namespace SMEIL.Parser.Codegen.VHDL
             var process = state.ActiveScopes.OfType<Instance.Process>().Last();
             var parmap = process.MappedParameters.FirstOrDefault(x => x.MappedItem == bus);
             var busname = GetLocalBusName(state, bus);
+            var busdirection = Validation.ItemUsageDirection.Both;
+            
+            if (parmap != null)
+            {
+                busdirection = parmap.MatchedParameter.Direction != ParameterDirection.In 
+                    ? Validation.ItemUsageDirection.Write 
+                    : Validation.ItemUsageDirection.Read;
+            } 
+            else
+            {
+                // Find a signal we can base the direction on
+                var anySignal = bus
+                    .Instances
+                    .OfType<Instance.Signal>()
+                    .Where(x => usages.ContainsKey(x))
+                    .Where(x => usages[x] != Validation.ItemUsageDirection.Both)
+                    .FirstOrDefault();
+
+                if (anySignal != null)
+                    busdirection = anySignal.Source.Direction == SignalDirection.Normal 
+                        ? usages[anySignal]
+                        : (usages[anySignal] == Validation.ItemUsageDirection.Read 
+                            ? Validation.ItemUsageDirection.Read 
+                            : Validation.ItemUsageDirection.Write
+                        );
+            }
 
             // Normally signals are in or out
             var signals =
@@ -3079,9 +3105,18 @@ namespace SMEIL.Parser.Codegen.VHDL
                 .OfType<Instance.Signal>()
                 .SelectMany(x =>
                 {
+                    // TODO: Should we ignore usage direction?
+
                     // We also render unused signals to ensure the VHDL follows the SMEIL signature
                     if (!usages.TryGetValue(x, out var d))
-                        d = parmap.MatchedParameter.Direction != ParameterDirection.In ? Validation.ItemUsageDirection.Write : Validation.ItemUsageDirection.Read;
+                    {
+                        d = x.Source.Direction == SignalDirection.Normal 
+                            ? busdirection
+                            : (busdirection == Validation.ItemUsageDirection.Read
+                                ? Validation.ItemUsageDirection.Read 
+                                : Validation.ItemUsageDirection.Write
+                            );
+                    }
 
                     if (d == Validation.ItemUsageDirection.Both)
                     {
