@@ -16,12 +16,12 @@ namespace SMEIL.Parser.AST
         /// <summary>
         /// The expression for the loop start
         /// </summary>
-        public readonly Expression FromExpression;
+        public Expression FromExpression;
 
         /// <summary>
         /// The expression where the loop terminates
         /// </summary>
-        public readonly Expression ToExpression;
+        public Expression ToExpression;
 
         /// <summary>
         /// The statements in the loop body

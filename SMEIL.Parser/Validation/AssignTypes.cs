@@ -373,6 +373,23 @@ namespace SMEIL.Parser.Validation
 
                     state.RegisterItemUsageDirection(parent, symbol, ItemUsageDirection.Write, item);
                 }
+                else if (item is AST.ForStatement forStatement)
+                {
+                    var fromType = assignedTypes[forStatement.FromExpression];
+                    var toType = assignedTypes[forStatement.ToExpression];
+
+                    if (!fromType.IsInteger)
+                        throw new ParserException("The from/to arguments in a for loop must be integer types", forStatement.FromExpression);
+                    if (!toType.IsInteger)
+                        throw new ParserException("The from/to arguments in a for loop must be integer types", forStatement.ToExpression);
+
+                    var inttype = new DataType(forStatement.Variable.Name.SourceToken, ILType.SignedInteger, -1);
+
+                    if (fromType.BitWidth != -1) 
+                        assignedTypes[forStatement.FromExpression = new AST.TypeCast(forStatement.FromExpression, inttype, false)] = inttype;
+                    if (toType.BitWidth != -1) 
+                        assignedTypes[forStatement.ToExpression = new AST.TypeCast(forStatement.ToExpression, inttype, false)] = inttype;
+                }
             }
         }
 
