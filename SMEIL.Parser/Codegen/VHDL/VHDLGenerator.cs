@@ -1607,6 +1607,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             {
                 var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
                 var mainname = SanitizeVHDLName(RenderIdentifier(state, "main_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+                var instname = SanitizeVHDLName(RenderIdentifier(state, "inst_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
                 var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
                 var decl = GenerateVHDLFilePreamble(state);
                 decl += RenderLines(state, $"entity {name} is");
@@ -1788,7 +1789,7 @@ namespace SMEIL.Parser.Codegen.VHDL
                     decl += RenderLines(state, 
                         "",
                         "-- Wire up the main instance",
-                        $"{name}: entity work.{mainname}",
+                        $"{instname}: entity work.{mainname}",
                         "port map ("
                     );
 
