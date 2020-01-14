@@ -1048,14 +1048,35 @@ namespace SMEIL.Parser.Codegen.VHDL
                         decl += RenderLines(state,
                             AllBusses
                                 .SelectMany(x => x.Instances.OfType<Instance.Signal>())
-                                .SelectMany(x => 
-                                    (x.ResolvedType.IsArray ? Enumerable.Range(0, x.ResolvedType.BitWidth) : new [] { -1 })
-                                        .SelectMany(y => new string[] {
-                                            "read_csv_field(L, tmp);",
-                                            $"assert are_strings_equal(tmp, \"{x.ParentBus.Name}.{x.Name}{(y == -1 ? string.Empty : $"({y})")}\") report \"Field #\" & integer'image(fieldno) & \" is not correctly named: \" & truncate(tmp) & \", expected {x.ParentBus.Name}.{x.Name}{(y == -1 ? string.Empty : $"({y})")}\" severity Failure;",
-                                            "fieldno := fieldno + 1;"
-                                        })
-                                )
+                                .SelectMany(x => {
+
+                                    var counter = string.Empty;
+                                    var label = string.Empty;
+                                    var itemname = RenderSignalName(BusNames[x.ParentBus], x.Name);
+
+                                    if (x.ResolvedType.IsArray)
+                                    {
+                                        counter = $"name_cnt_{itemname}";
+                                        label = $"gen_name_label_{itemname}";
+                                    }
+                                    var counter_string = counter == string.Empty ? string.Empty : $"(\" & integer'image({counter}) & \")";
+
+                                    var body = new string[] {
+                                        "read_csv_field(L, tmp);",
+                                        $"assert are_strings_equal(tmp, \"{x.ParentBus.Name}.{x.Name}{counter_string}\") report \"Field #\" & integer'image(fieldno) & \" is not correctly named: \" & truncate(tmp) & \", expected {x.ParentBus.Name}.{x.Name}{counter_string}\" severity Failure;",
+                                        "fieldno := fieldno + 1;"
+                                    };
+
+                                    if (x.ResolvedType.IsArray)
+                                    {
+                                        body = new string[] { $"{label}: for {counter} in {itemname}'range loop" }
+                                        .Concat(body.Select(y => "    " + y))
+                                        .Concat(new string[] { "end loop;" })
+                                        .ToArray();
+                                    }
+
+                                    return body;
+                                })
                         );
 
                         decl += RenderLines(state,
@@ -1093,17 +1114,40 @@ namespace SMEIL.Parser.Codegen.VHDL
                                     .Where(x => inputsmap.Contains(x))
                                     .SelectMany(x => x.Instances.OfType<Instance.Signal>())
                                     .SelectMany(x => 
-                                            (x.ResolvedType.IsArray ? Enumerable.Range(0, x.ResolvedType.BitWidth) : new [] { -1 })
-                                                .SelectMany(y => new string[] {
-                                                    "read_csv_field(L, tmp);",
-                                                    "if are_strings_equal(tmp, \"U\") then",
-                                                    $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")} <= {(x.ResolvedType.IsBoolean ? "to_boolean('U')" : "(others => 'U')")};",
-                                                    "else",
-                                                    $"    {RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")} <= {(x.ResolvedType.IsBoolean ? "to_boolean(truncate(tmp))" : FromStdLogicVectorConvertFunction(y == -1 ? x.ResolvedType : x.ResolvedType.ElementType, "to_std_logic_vector(truncate(tmp))"))};",
-                                                    "end if;",
-                                                    "fieldno := fieldno + 1;"
-                                            })
-                                    )
+                                    {
+                                        var counter = string.Empty;
+                                        var label = string.Empty;
+                                        var itemtype = x.ResolvedType;
+                                        var itemname = RenderSignalName(BusNames[x.ParentBus], x.Name);
+
+                                        if (x.ResolvedType.IsArray)
+                                        {
+                                            counter = $"drive_cnt_{itemname}";
+                                            label = $"gen_drive_label_{itemname}";
+                                            itemtype = x.ResolvedType.ElementType;
+                                        }
+                                        var counter_index = counter == string.Empty ? string.Empty : $"({counter})";
+
+                                        var body = new string[] {
+                                            "read_csv_field(L, tmp);",
+                                            "if are_strings_equal(tmp, \"U\") then",
+                                            $"    {itemname}{counter_index} <= {(itemtype.IsBoolean ? "to_boolean('U')" : "(others => 'U')")};",
+                                            "else",
+                                            $"    {itemname}{counter_index} <= {(itemtype.IsBoolean ? "to_boolean(truncate(tmp))" : FromStdLogicVectorConvertFunction(itemtype, "to_std_logic_vector(truncate(tmp))"))};",
+                                            "end if;",
+                                            "fieldno := fieldno + 1;"
+                                        };
+
+                                        if (x.ResolvedType.IsArray)
+                                        {
+                                            body = new string[] { $"{label}: for {counter} in {itemname}'range loop" }
+                                            .Concat(body.Select(y => "    " + y))
+                                            .Concat(new string[] { $"end loop;" })
+                                            .ToArray();
+                                        }
+
+                                        return body;
+                                    })
                             );
 
                             decl += RenderLines(state,
@@ -1124,19 +1168,41 @@ namespace SMEIL.Parser.Codegen.VHDL
                                 AllBusses
                                     .Where(x => !inputsmap.Contains(x))
                                     .SelectMany(x => x.Instances.OfType<Instance.Signal>())
-                                    .SelectMany(x => 
-                                        (x.ResolvedType.IsArray ? Enumerable.Range(0, x.ResolvedType.BitWidth) : new [] { -1 })
-                                        .SelectMany(y => new string[] {
-                                            $"read_csv_field(L, tmp);",
-                                            $"if not are_strings_equal(tmp, \"U\") then",
-                                            $"    if not are_strings_equal(str({RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")}), tmp) then",
-                                            $"        newfailures := newfailures + 1;",
-                                            $"        report \"Value for {RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")} in cycle \" & integer'image(clockcycle) & \" was: \" & str({RenderSignalName(BusNames[x.ParentBus], x.Name)}{(y == -1 ? string.Empty : $"({y})")}) & \" but should have been: \" & truncate(tmp) severity Error;",
-                                            $"    end if;",
-                                            $"end if;",
-                                            $"fieldno := fieldno + 1;"
-                                        })
-                                    )
+                                    .SelectMany(x => {
+
+                                    var counter = string.Empty;
+                                    var label = string.Empty;
+                                    var itemname = RenderSignalName(BusNames[x.ParentBus], x.Name);
+
+                                    if (x.ResolvedType.IsArray)
+                                    {
+                                        counter = $"verify_cnt_{itemname}";
+                                        label = $"gen_verify_label_{itemname}";
+                                    }
+                                    var counter_index = counter == string.Empty ? string.Empty : $"({counter})";
+                                    var counter_string = counter == string.Empty ? string.Empty : $"(\" & integer'image({counter}) & \")";
+
+                                    var body = new string[] {
+                                        "read_csv_field(L, tmp);",
+                                        $"if not are_strings_equal(tmp, \"U\") then",
+                                        $"    if not are_strings_equal(str({RenderSignalName(BusNames[x.ParentBus], x.Name)}{counter_index}), tmp) then",
+                                        $"        newfailures := newfailures + 1;",
+                                        $"        report \"Value for {RenderSignalName(BusNames[x.ParentBus], x.Name)}{counter_string} in cycle \" & integer'image(clockcycle) & \" was: \" & str({RenderSignalName(BusNames[x.ParentBus], x.Name)}{counter_index}) & \" but should have been: \" & truncate(tmp) severity Error;",
+                                        $"    end if;",
+                                        $"end if;",
+                                        "fieldno := fieldno + 1;"
+                                    };
+
+                                    if (x.ResolvedType.IsArray)
+                                    {
+                                        body = new string[] { $"{label}: for {counter} in {itemname}'range loop" }
+                                        .Concat(body.Select(y => "    " + y))
+                                        .Concat(new string[] { "end loop;" })
+                                        .ToArray();
+                                    }
+
+                                    return body;
+                                })
                             );
 
                             decl += RenderLines(state,
@@ -1675,12 +1741,15 @@ namespace SMEIL.Parser.Codegen.VHDL
                                         conv.TryGetValue(x.ResolvedType.ElementType.Type, out var f);
                                         var previndent = state.Indent;
                                         using(state.Indenter())
-                                            return $"{RenderSignalName(exportnames[bus], x.Name)} <= ({Environment.NewLine}{state.Indent}"
-                                                + string.Join($",{Environment.NewLine}{state.Indent}", 
-                                                    Enumerable.Range(0, x.ResolvedType.BitWidth)
-                                                        .Select(y => $"{(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)}({y}))")
-                                                )
-                                                + $"{Environment.NewLine}{previndent});";
+                                        {
+                                            var y = $"cnt_{RenderSignalName(exportnames[bus], x.Name)}";
+                                            var label = $"generate_label_{RenderSignalName(exportnames[bus], x.Name)}";
+
+                                            return
+                                                $"{label}: for {y} in {RenderSignalName(exportnames[bus], x.Name)}'range generate{Environment.NewLine}" +
+                                                $"{state.Indent}{RenderSignalName(exportnames[bus], x.Name)}({y}) <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)}({y}));{Environment.NewLine}" + 
+                                                $"{previndent}end generate;";
+                                        }
                                     }
                                     else
                                     {
@@ -1691,16 +1760,19 @@ namespace SMEIL.Parser.Codegen.VHDL
                                 else
                                 {
                                     if (x.ResolvedType.IsArray)
-                                    {
+                                    {                                        
                                         conv.TryGetValue(x.ResolvedType.ElementType.Type, out var f);
                                         var previndent = state.Indent;
                                         using (state.Indenter())
-                                            return $"{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)} <= ({Environment.NewLine}{state.Indent}"
-                                                + string.Join($",{Environment.NewLine}{state.Indent}",
-                                                    Enumerable.Range(0, x.ResolvedType.BitWidth)
-                                                        .Select(y => $"{(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus], x.Name)}({y}))")
-                                                )
-                                                + $"{Environment.NewLine}{previndent});";
+                                        {
+                                            var y = $"cnt_{RenderSignalName(exportnames[bus], x.Name)}";
+                                            var label = $"generate_label_{RenderSignalName(exportnames[bus], x.Name)}";
+
+                                            return
+                                                $"{label}: for {y} in {RenderSignalName(exportnames[bus], x.Name)}'range generate{Environment.NewLine}" +
+                                                $"{state.Indent}{RenderSignalName(exportnames[bus].Substring("ext_".Length), x.Name)}({y}) <= {(f ?? "UNKNOWN")}({RenderSignalName(exportnames[bus], x.Name)}({y}));{Environment.NewLine}" + 
+                                                $"{previndent}end generate;";
+                                        }
                                     }
                                     else
                                     {
