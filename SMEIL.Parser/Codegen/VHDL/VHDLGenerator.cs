@@ -3706,7 +3706,11 @@ namespace SMEIL.Parser.Codegen.VHDL
             // Source is an unbounded integer
             if (sourceType.IsInteger && sourceType.BitWidth == -1)
             {
-                if (destType.Type == ILType.SignedInteger)
+                // For unbounded types, VHDL only has the signed type, so we do not need to type-cast, 
+                // unless the value exceeds int32 bounds
+                if (destType.IsInteger && destType.BitWidth == -1)
+                    return RenderExpression(state, typeCast.Expression);
+                else if (destType.Type == ILType.SignedInteger)
                     return $"TO_SIGNED({RenderExpression(state, typeCast.Expression)}, {destType.BitWidth})";
                 else if (destType.Type == ILType.UnsignedInteger)
                     return $"TO_UNSIGNED({RenderExpression(state, typeCast.Expression)}, {destType.BitWidth})";
