@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System;
 using System.Collections.Generic;
 
@@ -6,6 +7,7 @@ namespace SMEIL.Parser.AST
     /// <summary>
     /// Represents a binary expression
     /// </summary>
+    [DebuggerDisplay("{AsString}")]
     public class BinaryExpression : Expression
     {
         /// <summary>
@@ -35,6 +37,11 @@ namespace SMEIL.Parser.AST
             Operation = operation ?? throw new ArgumentNullException(nameof(operation));
             Right = right ?? throw new ArgumentNullException(nameof(right));
         }
+
+        /// <summary>
+        /// Returns a string representation of the expression, suitable for debugging
+        /// </summary>
+        public override string AsString => $"{Left?.AsString} {Operation.AsString} {Right?.AsString}";
 
         /// <summary>
         /// Clones this expression and returns a copy of it

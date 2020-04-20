@@ -38,6 +38,30 @@ namespace SMEIL.Parser.AST
         }
 
         /// <summary>
+        /// Returns a string representation of the expression, suitable for debugging
+        /// </summary>
+        public string AsString
+        {
+            get
+            {
+                switch (Operation)
+                {
+                    case UnOp.Negation:
+                        return "-";
+                    case UnOp.LogicalNegation:
+                        return "!";
+                    case UnOp.Identity:
+                        return "+";
+                    case UnOp.BitwiseInvert:
+                        return "~";
+                    default:
+                        return Operation.ToString();
+                }
+            }
+        }
+
+
+        /// <summary>
         /// Parses a string into a unary operation
         /// </summary>
         /// <param name="value">The string to parse</param>

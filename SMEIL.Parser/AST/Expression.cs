@@ -1,9 +1,11 @@
-﻿using System;
+﻿using System.Diagnostics;
+using System;
 namespace SMEIL.Parser.AST
 {
     /// <summary>
     /// Represents an expression
     /// </summary>
+    [DebuggerDisplay("{AsString}")]
     public abstract class Expression : ParsedItem
     {
         /// <summary>
@@ -20,6 +22,11 @@ namespace SMEIL.Parser.AST
         /// </summary>
         /// <returns>A copy of the expression</returns>
         public abstract Expression Clone();
+
+        /// <summary>
+        /// Returns a string representation of the expression, suitable for debugging
+        /// </summary>
+        public abstract string AsString { get; }
 
     }
 }

@@ -6,7 +6,7 @@ namespace SMEIL.Parser.AST
     /// <summary>
     /// Represents a literal as an expression
     /// </summary>
-    [DebuggerDisplay("Literal = {Value}")]
+    [DebuggerDisplay("{Value}")]
     public class LiteralExpression : Expression
     {
         /// <summary>
@@ -24,6 +24,11 @@ namespace SMEIL.Parser.AST
         {
             Value = value ?? throw new ArgumentNullException(nameof(value));
         }
+
+        /// <summary>
+        /// Returns a string representation of the expression, suitable for debugging
+        /// </summary>
+        public override string AsString => Value?.SourceToken.Text;
 
         /// <summary>
         /// Clones this expression and returns a copy of it

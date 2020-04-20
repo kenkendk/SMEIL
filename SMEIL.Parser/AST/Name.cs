@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
@@ -19,9 +20,27 @@ namespace SMEIL.Parser.AST
         public readonly ArrayIndex[] Index;
 
         /// <summary>
-        /// Helper property to see the full name
+        /// Helper method to return name fragments
         /// </summary>
-        public string AsString => string.Join(".", Identifier.Select(x => x.Name));
+        /// <value>The names and associated index values, if any</value>
+        private IEnumerable<string> AsStringParts
+        {
+            get
+            {
+                for(var i = 0; i < Identifier.Length; i++)
+                {
+                    if (Index[i] == null)
+                        yield return Identifier[i].Name;
+                    else
+                        yield return Identifier[i].Name + "[" + Index[i].Index.AsString + "]";
+                }
+            }
+        }
+
+        /// <summary>
+        /// Helper property to see the full name in debugging
+        /// </summary>
+        public string AsString => string.Join(".", AsStringParts);
 
         /// <summary>
         /// Constructs a new name

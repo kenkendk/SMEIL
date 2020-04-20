@@ -1,10 +1,12 @@
 using System;
+using System.Diagnostics;
 
 namespace SMEIL.Parser.AST
 {
     /// <summary>
     /// Represents a name expression
     /// </summary>
+    [DebuggerDisplay("{Name}")]
     public class NameExpression : Expression
     {
         /// <summary>
@@ -22,6 +24,11 @@ namespace SMEIL.Parser.AST
         {
             this.Name = name ?? throw new ArgumentNullException(nameof(name));
         }
+
+        /// <summary>
+        /// Returns a string representation of the expression, suitable for debugging
+        /// </summary>
+        public override string AsString => Name?.AsString;
 
         /// <summary>
         /// Clones this expression and returns a copy of it

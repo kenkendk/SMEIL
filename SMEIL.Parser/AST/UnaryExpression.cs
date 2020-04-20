@@ -31,6 +31,11 @@ namespace SMEIL.Parser.AST
         }
 
         /// <summary>
+        /// Returns a string representation of the expression, suitable for debugging
+        /// </summary>
+        public override string AsString => $"{Operation.AsString}{Expression.AsString}";
+
+        /// <summary>
         /// Clones this expression and returns a copy of it
         /// </summary>
         /// <returns>A copy of the expression</returns>

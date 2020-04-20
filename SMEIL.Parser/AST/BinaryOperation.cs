@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace SMEIL.Parser.AST
 {
@@ -111,6 +112,7 @@ namespace SMEIL.Parser.AST
     /// <summary>
     /// Represents a binary operation
     /// </summary>
+    [DebuggerDisplay("{AsString}")]
     public class BinaryOperation : ParsedItem
     {
         /// <summary>
@@ -152,6 +154,57 @@ namespace SMEIL.Parser.AST
             : base(token)
         {
             Operation = Parse(token);
+        }
+
+        /// <summary>
+        /// Returns a string representation of this instance, suitable for debugging
+        /// </summary>
+        public string AsString
+        {
+            get
+            {
+                switch (Operation)
+                {
+                    case BinOp.Add:
+                        return "+";
+                    case BinOp.Subtract:
+                        return "-";
+                    case BinOp.Multiply:
+                        return "*";
+                    case BinOp.Divide:
+                        return "/";
+                    case BinOp.Modulo:
+                        return "%";
+                    case BinOp.Equal:
+                        return "==";
+                    case BinOp.NotEqual:
+                        return "!=";
+                    case BinOp.ShiftLeft:
+                        return "<<";
+                    case BinOp.ShiftRight:
+                        return ">>";
+                    case BinOp.LessThan:
+                        return "<";
+                    case BinOp.GreaterThan:
+                        return ">";
+                    case BinOp.GreaterThanOrEqual:
+                        return ">=";
+                    case BinOp.LessThanOrEqual:
+                        return "<=";
+                    case BinOp.BitwiseAnd:
+                        return "&";
+                    case BinOp.BitwiseOr:
+                        return "|";
+                    case BinOp.BitwiseXor:
+                        return "^";
+                    case BinOp.LogicalAnd:
+                        return "&&";
+                    case BinOp.LogicalOr:
+                        return "&&";
+                    default:
+                        return Operation.ToString();
+                }
+            }
         }
 
         /// <summary>
