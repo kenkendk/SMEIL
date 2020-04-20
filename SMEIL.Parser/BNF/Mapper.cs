@@ -15,7 +15,7 @@ namespace SMEIL.Parser.BNF
         /// <summary>
         /// The matcher to use
         /// </summary>
-        public readonly Func<Match, T> Matcher;
+        public Func<Match, T> Matcher;
 
         /// <summary>
         /// Constructs a new mapper item

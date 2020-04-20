@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -12,6 +13,21 @@ namespace SMEIL.Parser
     /// </summary>
     public static class BNFMapper
     {
+        /// <summary>
+        /// Helper class to capture left-recursive binary operations
+        /// </summary>
+        private class BinOpMatch
+        {
+            /// <summary>
+            /// The matched operation
+            /// </summary>
+            public AST.BinaryOperation Operation;
+            /// <summary>
+            /// The matched expression
+            /// </summary>
+            public AST.Expression Expression;
+        }
+
         /// <summary>
         /// Parses the token stream and returns an abstract syntax tree
         /// </summary>
@@ -325,13 +341,26 @@ namespace SMEIL.Parser
 
                     // Create a term where the starting token is a terminal,
                     // namely the operation literal
-                    var tmp = Mapper(
-                        null,
-                        y => new {
-                            Operation = y.FirstOrDefaultMapper(opMap),
-                            Expression = y.FirstOrDefaultMapper(prev_locked),
-                        }
-                    );
+                    var tmp = Mapper<BinOpMatch>(null, null);
+                    tmp.Matcher = 
+                        y => {
+                            var op = y.FirstOrDefaultMapper(opMap);
+                            var exp = y.FirstOrDefaultMapper(prev_locked);
+
+                            // If we matched the rhs non-terminal, 
+                            // check for the optional trailing component (of same precedence)
+                            if (exp != null)
+                            {
+                                var trailing = y.FindSubMatch(0,0).InvokeFirstLevelMappers(tmp).FirstOrDefault();
+                                if (trailing.Expression != null)
+                                    exp = new AST.BinaryExpression(exp.SourceToken, exp, trailing.Operation, trailing.Expression);
+                            }
+                            
+                            return new BinOpMatch() {
+                                Operation = op,
+                                Expression = exp,
+                            };
+                        };
 
                     // Recursive definition, but starting with a terminal
                     tmp.Token = Optional(
