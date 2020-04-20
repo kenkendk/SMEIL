@@ -391,7 +391,7 @@ namespace SMEIL.Parser
                 x => new AST.AssignmentStatement(
                     x.Item,
                     x.FirstMapper(name),
-                    x.FirstMapper(expression)
+                    x.FindSubMatch(0,2).FirstMapper(expression)
                 )
             );
 
