@@ -407,7 +407,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         public string GenerateMakefile(RenderState state, Dictionary<Instance.Process, string> filenames, string standard, string extension = "vhdl")
         {
             var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
-            var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+            var name = SanitizeVHDLName(RenderTopLevelIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
 
             var decl = RenderLines(state,
                 "all: test export",
@@ -884,7 +884,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         {
             var decl = GenerateVHDLFilePreamble(state);
             var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
-            var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+            var name = SanitizeVHDLName(RenderTopLevelIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
 
             decl += RenderLines(state,
                 "use work.csv_util.all;",
@@ -1286,7 +1286,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         public string GenerateXpf(RenderState state, Dictionary<Instance.Process, string> filenames, string extension = "vhdl")
         {
             var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
-            var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+            var name = SanitizeVHDLName(RenderTopLevelIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
             
             var decl = RenderLines(state, 
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
@@ -1489,7 +1489,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         public string GenerateAocl(RenderState state, Dictionary<Instance.Process, string> filenames, string extension = "vhdl")
         {
             var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
-            var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+            var name = SanitizeVHDLName(RenderTopLevelIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
 
 
             // TODO: These options must be provided by the user
@@ -1606,9 +1606,9 @@ namespace SMEIL.Parser.Codegen.VHDL
             using (state.StartScope(ValidationState.TopLevel.NetworkInstance))
             {
                 var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
-                var mainname = SanitizeVHDLName(RenderIdentifier(state, "main_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
-                var instname = SanitizeVHDLName(RenderIdentifier(state, "inst_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
-                var name = SanitizeVHDLName(RenderIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+                var mainname = SanitizeVHDLName(RenderTopLevelIdentifier(state, "main_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+                var instname = SanitizeVHDLName(RenderTopLevelIdentifier(state, "inst_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+                var name = SanitizeVHDLName(RenderTopLevelIdentifier(state, ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
                 var decl = GenerateVHDLFilePreamble(state);
                 decl += RenderLines(state, $"entity {name} is");
                 using (state.Indenter())
@@ -1838,7 +1838,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             using (state.StartScope(ValidationState.TopLevel.NetworkInstance))
             {
                 var ndef = ValidationState.TopLevel.NetworkInstance.NetworkDefinition;
-                var name = SanitizeVHDLName(RenderIdentifier(state, "main_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
+                var name = SanitizeVHDLName(RenderTopLevelIdentifier(state, "main_", ndef.Name, ValidationState.TopLevel.NetworkDeclaration.Name.Name.Name));
                 var decl = GenerateVHDLFilePreamble(state); 
                 decl += RenderLines(state, $"entity {name} is");
 
@@ -3331,7 +3331,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         }
 
         /// <summary>
-        /// Renders a trace statement as VHDL
+        /// Renders a for-loop statement as VHDL
         /// </summary>
         /// <param name="state">The state of the render</name>
         /// <param name="forStatement">The statement to render</param>
@@ -3600,20 +3600,9 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// </summary>
         /// <param name="state">The state of the render</name>
         /// <param name="identifier">The identifier to render</param>
-        /// <returns>A VHDL fragment for the identifier</returns>
-        public string RenderIdentifier(RenderState state, AST.Identifier identifier)
-        {
-            return SanitizeVHDLName(identifier.Name);
-        }
-
-        /// <summary>
-        /// Renders an identifier
-        /// </summary>
-        /// <param name="state">The state of the render</name>
-        /// <param name="identifier">The identifier to render</param>
         /// <param name="instancename">The instancename to use</param>
         /// <returns>A VHDL fragment for the identifier</returns>
-        public string RenderIdentifier(RenderState state, AST.Identifier identifier, string instancename)
+        public string RenderTopLevelIdentifier(RenderState state, AST.Identifier identifier, string instancename)
         {
             return SanitizeVHDLName(identifier.Name);
         }
@@ -3626,7 +3615,7 @@ namespace SMEIL.Parser.Codegen.VHDL
         /// <param name="identifier">The identifier to render</param>
         /// <param name="instancename">The instancename to use</param>
         /// <returns>A VHDL fragment for the identifier</returns>
-        public string RenderIdentifier(RenderState state, string prefix, AST.Identifier identifier, string instancename)
+        public string RenderTopLevelIdentifier(RenderState state, string prefix, AST.Identifier identifier, string instancename)
         {
             return SanitizeVHDLName(prefix + identifier.Name);
         }
