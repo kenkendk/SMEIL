@@ -3345,7 +3345,7 @@ namespace SMEIL.Parser.Codegen.VHDL
             using (state.Indenter())
             using (state.StartScope(inst))
                 return 
-                    $"{indent}for { RenderIdentifier(state, forStatement.Variable.Name) } in { RenderExpression(state, forStatement.FromExpression) } to { RenderExpression(state, forStatement.ToExpression) } loop{Environment.NewLine}"
+                    $"{indent}for { RenderExpression(state, forStatement.Variable.Name.AsExpression()) } in { RenderExpression(state, forStatement.FromExpression) } to { RenderExpression(state, forStatement.ToExpression) } loop{Environment.NewLine}"
                     + string.Join(Environment.NewLine, "")
                     + RenderStatements(state, forStatement.Statements)
                     + $"{indent}end loop;";
